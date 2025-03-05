@@ -78,19 +78,19 @@ jobs:
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
-
+          
           account hostinger
           host smtp.hostinger.com
           port 587
           from ${{ secrets.EMAIL_USERNAME }}
           user ${{ secrets.EMAIL_USERNAME }}
           password ${{ secrets.EMAIL_PASSWORD }}
-
+          
           account default : hostinger
           EOF
-
+          
           chmod 600 ~/.msmtprc
-      
+
       - name: Debug Email Formatting
         run: |
           while IFS=: read -r user email; do
