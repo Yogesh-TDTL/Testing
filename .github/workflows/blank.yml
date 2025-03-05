@@ -69,8 +69,8 @@ jobs:
         env:
           SMTP_SERVER: "smtp.hostinger.com"  # Change for your SMTP provider
           SMTP_PORT: "587"  # Common ports: 465 (SSL), 587 (TLS)
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}  # Store in GitHub Secrets
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}  # Store in GitHub Secrets
+          SMTP_USERNAME: ${{ secrets.EMAIL_USERNAME }}  # Store in GitHub Secrets
+          SMTP_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}  # Store in GitHub Secrets
         run: |
           echo "Sending Email Notifications..."
           
