@@ -18,30 +18,35 @@ jobs:
         run: |
           COLLABORATORS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-          echo "collaborators=$COLLABORATORS" >> $GITHUB_ENV
+
+          echo "COLLABORATORS<<EOF" >> $GITHUB_ENV
+          echo "$COLLABORATORS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Check Contributions
         id: check_contributions
         run: |
           last_week=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
-          active_collaborators=""
-          inactive_collaborators=""
-          
-          for user in ${{ env.collaborators }}; do
+          active_collaborators=()
+          inactive_collaborators=()
+
+          while IFS= read -r user; do
             commits=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/${{ github.repository }}/commits?author=$user&since=$last_week")
-            
-            if [[ "$commits" == "[]" ]]; then
-              inactive_collaborators+="$user\n"
-            else
-              active_collaborators+="$user\n"
-            fi
-          done
 
-          echo -e "Active Collaborators:\n$active_collaborators"
-          echo -e "Inactive Collaborators:\n$inactive_collaborators"
-          
-          echo "inactive_collaborators=$inactive_collaborators" >> $GITHUB_ENV
+            if [[ "$commits" == "[]" ]]; then
+              inactive_collaborators+=("$user")
+            else
+              active_collaborators+=("$user")
+            fi
+          done <<< "${{ env.COLLABORATORS }}"
+
+          echo "Active Collaborators: ${active_collaborators[@]}"
+          echo "Inactive Collaborators: ${inactive_collaborators[@]}"
+
+          echo "INACTIVE_COLLABORATORS<<EOF" >> $GITHUB_ENV
+          printf "%s\n" "${inactive_collaborators[@]}" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Send Email to Inactive Collaborators
         if: env.inactive_collaborators != ''
