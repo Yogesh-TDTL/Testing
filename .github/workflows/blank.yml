@@ -102,39 +102,24 @@ jobs:
       - name: Send Email Notification to Non-Committers
         run: |
           echo "Sending Email Notifications..."
-          # Assign the sender email to a variable (ensuring no extra newlines)
-          FROM_EMAIL="${{ secrets.EMAIL_USERNAME }}"
-          
+
           while IFS=: read -r user email; do
-            email=$(echo "$email" | xargs)  # Trim spaces
-            
+            email=$(echo "$email" | tr -d '\r' | xargs)  # Remove hidden characters and trim spaces
+
             if [[ "$email" != "Email not available" && -n "$email" ]]; then
-              echo "Sending email to $user at $email..."
-              
-              # Write the email content with proper header formatting using a here-document.
-              cat <<EOF > email.txt
-                Subject: Reminder: No Commit Today
-                From: DevOps Team <${FROM_EMAIL}>
-                To: $email
-                
-                Hi $user,
-                
-                We noticed that you haven't committed to the repository today.
-                Please make sure to push your updates before the end of the day.
-                
-                Regards,
-                DevOps Team
-                EOF
+              echo "Processing: User='$user' | Email='$email'"
 
+              # Verify how msmtp interprets the email
               echo "Email content preview:"
-              cat email.txt
+              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
 
-              # Use msmtp with the -t option so that it extracts the recipient from the headers.
-              cat email.txt | msmtp --debug --from="${FROM_EMAIL}" -t
+              echo "Running msmtp command..."
+              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
 
               echo "Email sent to $user ($email)"
             else
               echo "Skipping $user: No valid email found."
             fi
           done < not_committed_with_emails.txt
+
 
