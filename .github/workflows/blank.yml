@@ -19,7 +19,7 @@ jobs:
           curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | sort -u > collaborators.txt
-          
+
           echo "All Collaborators:"
           cat collaborators.txt
 
@@ -41,7 +41,6 @@ jobs:
       - name: Find Collaborators Who Did Not Commit Today
         run: |
           echo "Finding Collaborators who did NOT commit today..."
-          
           comm -23 <(sort collaborators.txt | uniq) <(sort committers.txt | uniq) > not_committed.txt
 
           echo "Users who did NOT commit today:"
@@ -56,10 +55,16 @@ jobs:
           EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
 
           while read -r user; do
-            email="${EMAILS[$user]:-Email not available}"
-            echo "$user: $email"
-            echo "$user: $email" >> not_committed_with_emails.txt
+            email="${EMAILS[$user]:-}"
+            if [[ -n "$email" ]]; then
+              echo "$user: $email" >> not_committed_with_emails.txt
+            else
+              echo "Skipping $user: No email available"
+            fi
           done < not_committed.txt
+
+          echo "Final list of users with emails:"
+          cat not_committed_with_emails.txt || echo "No users to notify."
 
       - name: Install msmtp
         run: |
@@ -75,14 +80,14 @@ jobs:
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
-          
+
           account hostinger
           host smtp.hostinger.com
           port 587
           from ${{ secrets.EMAIL_USERNAME }}
           user ${{ secrets.EMAIL_USERNAME }}
           password ${{ secrets.EMAIL_PASSWORD }}
-          
+
           account default : hostinger
           EOF
 
@@ -90,6 +95,7 @@ jobs:
 
       - name: Debug Email Formatting
         run: |
+          echo "Checking email format before sending..."
           while IFS=: read -r user email; do
             email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
             echo "User: '$user' | Email: '$email'"
@@ -111,7 +117,7 @@ jobs:
               echo "Skipping $user: Invalid email format - '$email'"
               continue
             fi
-            
+
             echo "Processing: User='$user' | Email='$email'"
             echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
 
