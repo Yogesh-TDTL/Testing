@@ -87,6 +87,7 @@ jobs:
           EOF
 
           chmod 600 ~/.msmtprc
+          sudo chown root:root /etc/msmtprc
 
       - name: Debug Email Formatting
         run: |
