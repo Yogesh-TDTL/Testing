@@ -104,14 +104,19 @@ jobs:
           echo "Sending Email Notifications..."
 
           while IFS=: read -r user email; do
-            email=$(echo "$email" | xargs)  # Trim whitespace
+            email=$(echo "$email" | xargs)  # Trim spaces
 
             if [[ "$email" != "Email not available" && -n "$email" ]]; then
-              echo "Sending email to $user at $email..."
+              echo "Processing: User='$user' | Email='$email'"
+
+              # Double-check that the email variable is clean
+              echo "Email content preview:"
+              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team"
 
               echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
 
-              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} "$email"
+              echo "Running msmtp command..."
+              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
 
               echo "Email sent to $user ($email)"
             else
