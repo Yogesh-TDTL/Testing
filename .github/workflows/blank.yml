@@ -86,6 +86,12 @@ jobs:
 
           sudo chmod 600 /etc/ssmtp/ssmtp.conf
 
+      - name: Fix ssmtp permissions
+        run: |
+          sudo chmod 640 /etc/ssmtp/ssmtp.conf
+          sudo chown root:mail /etc/ssmtp/ssmtp.conf
+
+
       - name: Debug Email Formatting
         run: |
           echo "Checking email format before sending..."
