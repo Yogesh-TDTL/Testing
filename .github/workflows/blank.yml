@@ -20,8 +20,6 @@ jobs:
                               -H "Accept: application/vnd.github.v3+json" \
                               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
 
-          echo "All Collaborators:"
-          echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
 
       - name: Fetch Today's Committers
@@ -30,25 +28,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching Users who committed today..."
-          
           COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                              -H "Accept: application/vnd.github.v3+json" \
                              "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
 
-          echo "Users who committed today:"
-          echo "$COMMITTERS"
           echo "$COMMITTERS" > committers.txt
 
       - name: Find Collaborators Who Did Not Commit Today
         id: non_committers
         run: |
-          echo "Finding Collaborators who did NOT commit today..."
-          
           NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
-
-          echo "Users who did NOT commit today:"
-          echo "$NOT_COMMITTED"
           echo "$NOT_COMMITTED" > non_committers.txt
 
       - name: Install and Configure msmtp
@@ -58,41 +47,44 @@ jobs:
           echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth           login
+          auth           on
           tls            on
+          tls_starttls   on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
 
           account hostinger
           host smtp.hostinger.com
-          port 465
+          port 587
           user "${{ secrets.EMAIL_USERNAME }}"
           password "${{ secrets.EMAIL_PASSWORD }}"
           from "${{ secrets.EMAIL_USERNAME }}"
-          auth login
-          tls on
 
           account default : hostinger
           EOF
 
           chmod 600 ~/.msmtprc
 
+      - name: Debug SMTP Configuration
+        run: |
+          echo "Checking msmtp configuration..."
+          cat ~/.msmtprc
+          echo "Testing msmtp..."
+          echo -e "Subject: SMTP Test\n\nThis is a test email." | msmtp --debug ${{ secrets.RECIPIENT_EMAIL }}
 
       - name: Send Email to Non-Committers
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
-            EMAIL_TO="pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
+            EMAIL_TO="pratham.chatke@thedatatechlabs.com"  # Update this based on actual emails
             echo "Sending email to $EMAIL_TO..."
-
-            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp "$EMAIL_TO"
           done < non_committers.txt
 
       - name: Send Summary Email to Admin
         env:
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
-          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
+          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp "$RECIPIENT_EMAIL"
