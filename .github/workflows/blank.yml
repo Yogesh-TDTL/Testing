@@ -99,25 +99,41 @@ jobs:
       - name: Send Email Notification to Non-Committers
         run: |
           echo "Sending Email Notifications..."
-
+      
           while IFS=: read -r user email; do
             email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
-
+      
+            # Validate email format
             if [[ -z "$email" ]]; then
               echo "Skipping $user: No email found."
               continue
             fi
-            
+      
             if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
               echo "Skipping $user: Invalid email format - '$email'"
               continue
             fi
-            
+      
             echo "Processing: User='$user' | Email='$email'"
-            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
+      
+            # Create email body
+            cat <<EOF > email.txt
+          Subject: Reminder: No Commit Today
+          From: DevOps Team <${{ secrets.EMAIL_USERNAME }}>
+          To: $email
+          
+          Hi $user,
+          
+          We noticed that you haven't committed to the repository today.
+          Please push your updates before the end of the day.
+          
+          Regards,
+          DevOps Team
+          EOF
+          
+                echo "Running msmtp command..."
+                cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
+          
+                echo "Email sent to $user ($email)"
+              done < not_committed_with_emails.txt
 
-            echo "Running msmtp command..."
-            cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
-
-            echo "Email sent to $user ($email)"
-          done < not_committed_with_emails.txt
