@@ -1,10 +1,10 @@
-name: List Collaborators & Commit Activity
+name: Notify Non-Committers via Hostinger SMTP
 
 on:
   workflow_dispatch:  # Allows manual execution
 
 jobs:
-  list-collaborators-and-committers:
+  list-collaborators-and-notify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -41,6 +41,7 @@ jobs:
           echo "$COMMITTERS" > committers.txt
 
       - name: Find Collaborators Who Did Not Commit Today
+        id: non_committers
         run: |
           echo "Finding Collaborators who did NOT commit today..."
           
@@ -48,3 +49,48 @@ jobs:
 
           echo "Users who did NOT commit today:"
           echo "$NOT_COMMITTED"
+          echo "$NOT_COMMITTED" > non_committers.txt
+
+      - name: Install and Configure msmtp
+        run: |
+          sudo apt-get update && sudo apt-get install -y msmtp
+          
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           on
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          
+          account hostinger
+          host smtp.hostinger.com
+          port 587
+          user ${{ secrets.EMAIL_USERNAME }}
+          password ${{ secrets.EMAIL_PASSWORD }}
+          from ${{ secrets.EMAIL_USERNAME }}
+          auth on
+          tls on
+          
+          account default : hostinger
+          EOF
+
+          chmod 600 ~/.msmtprc
+
+      - name: Send Email to Non-Committers
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          while IFS= read -r user; do
+            EMAIL_TO="$pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
+            echo "Sending email to $EMAIL_TO..."
+
+            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < non_committers.txt
+
+      - name: Send Summary Email to Admin
+        env:
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
+          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
