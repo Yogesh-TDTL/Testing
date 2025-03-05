@@ -68,13 +68,12 @@ jobs:
 
       - name: Configure msmtp
         run: |
-          echo "Setting up msmtp configuration..."
-          cat <<EOF > ~/.msmtprc
-          defaults
+          echo "Creating /etc/msmtprc..."
+          echo "defaults
           auth           on
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
+          logfile        /var/log/msmtp.log
           
           account hostinger
           host smtp.hostinger.com
@@ -83,11 +82,12 @@ jobs:
           user ${{ secrets.EMAIL_USERNAME }}
           password ${{ secrets.EMAIL_PASSWORD }}
           
-          account default : hostinger
-          EOF
-
-          sudo chmod 600 ~/.msmtprc
+          account default : hostinger" | sudo tee /etc/msmtprc > /dev/null
+          
+          echo "Setting file permissions..."
+          sudo chmod 600 /etc/msmtprc
           sudo chown root:root /etc/msmtprc
+          echo "msmtp configuration complete!"
 
       - name: Debug Email Formatting
         run: |
