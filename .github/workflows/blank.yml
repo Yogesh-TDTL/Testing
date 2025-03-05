@@ -1,10 +1,10 @@
-name: List Collaborators & Notify Non-Committers
+name: Notify Non-Committers via Hostinger SMTP
 
 on:
   workflow_dispatch:  # Allows manual execution
 
 jobs:
-  list-collaborators-and-committers:
+  list-collaborators-and-notify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -16,13 +16,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching Collaborators..."
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | sort -u > collaborators.txt
-          
+          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
           echo "All Collaborators:"
-          cat collaborators.txt
-
+          echo "$COLLABORATORS"
+          echo "$COLLABORATORS" > collaborators.txt
       - name: Fetch Today's Committers
         id: committers
         env:
@@ -31,109 +30,56 @@ jobs:
           TODAY=$(date -u +"%Y-%m-%dT")
           echo "Fetching Users who committed today..."
           
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u > committers.txt
-
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
           echo "Users who committed today:"
-          cat committers.txt
-
+          echo "$COMMITTERS"
+          echo "$COMMITTERS" > committers.txt
       - name: Find Collaborators Who Did Not Commit Today
+        id: non_committers
         run: |
           echo "Finding Collaborators who did NOT commit today..."
           
-          comm -23 <(sort collaborators.txt | uniq) <(sort committers.txt | uniq) > not_committed.txt
-
+          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
           echo "Users who did NOT commit today:"
-          cat not_committed.txt
-
-      - name: Fetch Emails of Non-Committers
+          echo "$NOT_COMMITTED"
+          echo "$NOT_COMMITTED" > non_committers.txt
+      - name: Install and Configure msmtp
         run: |
-          echo "Fetching Emails of Non-Committers..."
-          declare -A EMAILS
-
-          EMAILS["Yogesh-TDTL"]="yogesh.more@thedatatechlabs.com"
-          EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
-
-          while read -r user; do
-            email="${EMAILS[$user]:-Email not available}"
-            echo "$user: $email"
-            echo "$user: $email" >> not_committed_with_emails.txt
-          done < not_committed.txt
-
-      - name: Install msmtp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y msmtp msmtp-mta
-
-      - name: Configure msmtp
-        run: |
-          echo "Creating /etc/msmtprc..."
-          echo "defaults
-          auth           on
+          sudo apt-get update && sudo apt-get install -y msmtp
+          
+          echo "Creating msmtp config file..."
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           login
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        /var/log/msmtp.log
-          
+          logfile        ~/.msmtp.log
           account hostinger
           host smtp.hostinger.com
-          port 587
-          from ${{ secrets.EMAIL_USERNAME }}
-          user ${{ secrets.EMAIL_USERNAME }}
-          password ${{ secrets.EMAIL_PASSWORD }}
-          
-          account default : hostinger" | sudo tee /etc/msmtprc > /dev/null
-          
-          echo "Setting file permissions..."
-          sudo chmod 600 /etc/msmtprc
-          sudo chown root:root /etc/msmtprc
-          echo "msmtp configuration complete!"
-
-      - name: Debug Email Formatting
-        run: |
-          while IFS=: read -r user email; do
-            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
-            echo "User: '$user' | Email: '$email'"
-          done < not_committed_with_emails.txt
-
-      - name: Send Email Notification to Non-Committers
-        run: |
-          echo "Sending Email Notifications..."
-      
-          while IFS=: read -r user email; do
-            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
-      
-            # Validate email format
-            if [[ -z "$email" ]]; then
-              echo "Skipping $user: No email found."
-              continue
-            fi
-      
-            if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-              echo "Skipping $user: Invalid email format - '$email'"
-              continue
-            fi
-      
-            echo "Processing: User='$user' | Email='$email'"
-      
-            # Create email body
-            cat <<EOF > email.txt
-          Subject: Reminder: No Commit Today
-          From: DevOps Team <${{ secrets.EMAIL_USERNAME }}>
-          To: $email
-          
-          Hi $user,
-          
-          We noticed that you haven't committed to the repository today.
-          Please push your updates before the end of the day.
-          
-          Regards,
-          DevOps Team
+          port 465
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          auth login
+          tls on
+          account default : hostinger
           EOF
-          
-                echo "Running msmtp command..."
-                cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
-          
-                echo "Email sent to $user ($email)"
-              done < not_committed_with_emails.txt
-
+          chmod 600 ~/.msmtprc
+      - name: Send Email to Non-Committers
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          while IFS= read -r user; do
+            EMAIL_TO="pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
+            echo "Sending email to $EMAIL_TO..."
+            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < non_committers.txt
+      - name: Send Summary Email to Admin
+        env:
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
+          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
