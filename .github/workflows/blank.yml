@@ -16,13 +16,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching Collaborators..."
-          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                              -H "Accept: application/vnd.github.v3+json" \
-                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | sort -u > collaborators.txt
+          
           echo "All Collaborators:"
-          echo "$COLLABORATORS"
-          echo "$COLLABORATORS" > collaborators.txt
+          cat collaborators.txt
 
       - name: Fetch Today's Committers
         id: committers
@@ -32,30 +31,27 @@ jobs:
           TODAY=$(date -u +"%Y-%m-%dT")
           echo "Fetching Users who committed today..."
           
-          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                             -H "Accept: application/vnd.github.v3+json" \
-                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u > committers.txt
 
           echo "Users who committed today:"
-          echo "$COMMITTERS"
-          echo "$COMMITTERS" > committers.txt
+          cat committers.txt
 
       - name: Find Collaborators Who Did Not Commit Today
         run: |
           echo "Finding Collaborators who did NOT commit today..."
           
-          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
+          comm -23 <(sort collaborators.txt | uniq) <(sort committers.txt | uniq) > not_committed.txt
 
           echo "Users who did NOT commit today:"
-          echo "$NOT_COMMITTED"
-          echo "$NOT_COMMITTED" > not_committed.txt
+          cat not_committed.txt
 
       - name: Fetch Emails of Non-Committers
         run: |
           echo "Fetching Emails of Non-Committers..."
           declare -A EMAILS
 
-          # Manually define known emails (replace with real emails)
           EMAILS["Yogesh-TDTL"]="yogesh.more@thedatatechlabs.com"
           EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
 
@@ -64,6 +60,7 @@ jobs:
             echo "$user: $email"
             echo "$user: $email" >> not_committed_with_emails.txt
           done < not_committed.txt
+
       - name: Install msmtp
         run: |
           sudo apt-get update
@@ -88,40 +85,38 @@ jobs:
           
           account default : hostinger
           EOF
-          
+
           chmod 600 ~/.msmtprc
 
       - name: Debug Email Formatting
         run: |
           while IFS=: read -r user email; do
-            email=$(echo "$email" | xargs)  # Trim spaces
+            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
             echo "User: '$user' | Email: '$email'"
           done < not_committed_with_emails.txt
-
 
       - name: Send Email Notification to Non-Committers
         run: |
           echo "Sending Email Notifications..."
 
           while IFS=: read -r user email; do
-            email=$(echo "$email" | tr -d '\r' | xargs)  # Remove hidden characters and trim spaces
-            
-            # Debugging: Print the email to check its format
-            echo "Processing: User='$user' | Email='$email'"
+            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
 
-            # Validate email format
+            if [[ -z "$email" ]]; then
+              echo "Skipping $user: No email found."
+              continue
+            fi
+            
             if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
               echo "Skipping $user: Invalid email format - '$email'"
               continue
             fi
             
-            echo "Email content preview:"
-            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
+            echo "Processing: User='$user' | Email='$email'"
+            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
 
             echo "Running msmtp command..."
             cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
 
             echo "Email sent to $user ($email)"
           done < not_committed_with_emails.txt
-
-
