@@ -19,7 +19,7 @@ jobs:
           curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | sort -u > collaborators.txt
-
+          
           echo "All Collaborators:"
           cat collaborators.txt
 
@@ -41,6 +41,7 @@ jobs:
       - name: Find Collaborators Who Did Not Commit Today
         run: |
           echo "Finding Collaborators who did NOT commit today..."
+          
           comm -23 <(sort collaborators.txt | uniq) <(sort committers.txt | uniq) > not_committed.txt
 
           echo "Users who did NOT commit today:"
@@ -55,63 +56,67 @@ jobs:
           EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
 
           while read -r user; do
-            email="${EMAILS[$user]:-}"
-            if [[ -n "$email" ]]; then
-              echo "$user: $email" >> not_committed_with_emails.txt
-            else
-              echo "Skipping $user: No email available"
-            fi
+            email="${EMAILS[$user]:-Email not available}"
+            echo "$user: $email"
+            echo "$user: $email" >> not_committed_with_emails.txt
           done < not_committed.txt
 
-          echo "Final list of users with emails:"
-          cat not_committed_with_emails.txt || echo "No users to notify."
-
-      - name: Install ssmtp
+      - name: Install msmtp
         run: |
           sudo apt-get update
-          sudo apt-get install -y ssmtp
+          sudo apt-get install -y msmtp msmtp-mta
 
-      - name: Configure ssmtp
+      - name: Configure msmtp
         run: |
-          echo "Setting up ssmtp configuration..."
-          sudo bash -c "cat > /etc/ssmtp/ssmtp.conf <<EOF
-          root=${{ secrets.EMAIL_USERNAME }}
-          mailhub=smtp.hostinger.com:587
-          AuthUser=${{ secrets.EMAIL_USERNAME }}
-          AuthPass=${{ secrets.EMAIL_PASSWORD }}
-          UseTLS=YES
-          UseSTARTTLS=YES
-          FromLineOverride=YES
-          EOF"
+          echo "Setting up msmtp configuration..."
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           on
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          
+          account hostinger
+          host smtp.hostinger.com
+          port 587
+          from ${{ secrets.EMAIL_USERNAME }}
+          user ${{ secrets.EMAIL_USERNAME }}
+          password ${{ secrets.EMAIL_PASSWORD }}
+          
+          account default : hostinger
+          EOF
 
-          sudo chmod 600 /etc/ssmtp/ssmtp.conf
-
-      - name: Fix ssmtp permissions
-        run: |
-          sudo chmod 640 /etc/ssmtp/ssmtp.conf
-          sudo chown root:mail /etc/ssmtp/ssmtp.conf
-
+          chmod 600 ~/.msmtprc
 
       - name: Debug Email Formatting
         run: |
-          echo "Checking email format before sending..."
           while IFS=: read -r user email; do
             email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
             echo "User: '$user' | Email: '$email'"
           done < not_committed_with_emails.txt
 
-      - name: Send Email using sendmail
+      - name: Send Email Notification to Non-Committers
         run: |
-          echo "Subject: Reminder: No Commit Today" > email.txt
-          echo "From: DevOps Team <${{ secrets.EMAIL_USERNAME }}>" >> email.txt
-          echo "To: $email" >> email.txt
-          echo "" >> email.txt
-          echo "Hi $user," >> email.txt
-          echo "" >> email.txt
-          echo "We noticed that you haven't committed to the repository today." >> email.txt
-          echo "Please push your updates before the end of the day." >> email.txt
-          echo "" >> email.txt
-          echo "Regards," >> email.txt
-          echo "DevOps Team" >> email.txt
-          sendmail -v "$email" < email.txt
+          echo "Sending Email Notifications..."
 
+          while IFS=: read -r user email; do
+            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
+
+            if [[ -z "$email" ]]; then
+              echo "Skipping $user: No email found."
+              continue
+            fi
+            
+            if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+              echo "Skipping $user: Invalid email format - '$email'"
+              continue
+            fi
+            
+            echo "Processing: User='$user' | Email='$email'"
+            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
+
+            echo "Running msmtp command..."
+            cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
+
+            echo "Email sent to $user ($email)"
+          done < not_committed_with_emails.txt
