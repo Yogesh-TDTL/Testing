@@ -86,7 +86,7 @@ jobs:
           account default : hostinger
           EOF
 
-          chmod 600 ~/.msmtprc
+          sudo chmod 600 ~/.msmtprc
           sudo chown root:root /etc/msmtprc
 
       - name: Debug Email Formatting
