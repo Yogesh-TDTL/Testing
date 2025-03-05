@@ -43,28 +43,35 @@ jobs:
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
-          
+
+          # Ensure secrets are trimmed to remove extra newlines
+          EMAIL_USER=$(echo -n "${{ secrets.EMAIL_USERNAME }}" | tr -d '\r' | tr -d '\n')
+          EMAIL_PASS=$(echo -n "${{ secrets.EMAIL_PASSWORD }}" | tr -d '\r' | tr -d '\n')
+      
           echo "Creating msmtp config file..."
-          cat <<EOF > ~/.msmtprc
-          defaults
-          auth           on
-          tls            on
-          tls_starttls   on
-          tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
-
-          account hostinger
-          host smtp.hostinger.com
-          port 587
-          user "${{ secrets.EMAIL_USERNAME }}"
-          password "${{ secrets.EMAIL_PASSWORD }}"
-          from "${{ secrets.EMAIL_USERNAME }}"
-
-          account default : hostinger
+          cat > ~/.msmtprc <<EOF
+            defaults
+            auth           on
+            tls            on
+            tls_starttls   on
+            tls_trust_file /etc/ssl/certs/ca-certificates.crt
+            logfile        ~/.msmtp.log
+            
+            account hostinger
+            host smtp.hostinger.com
+            port 587
+            user $EMAIL_USER
+            password $EMAIL_PASS
+            from $EMAIL_USER
+            
+            account default : hostinger
           EOF
 
           chmod 600 ~/.msmtprc
-          cat ~/.msmtprc
+      
+          echo "Checking msmtp configuration..."
+          cat -A ~/.msmtprc  # Debug: Show hidden characters
+
 
       - name: Send Email to Non-Committers
         env:
