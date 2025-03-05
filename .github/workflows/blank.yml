@@ -1,7 +1,7 @@
 name: List Collaborators & Notify Non-Committers
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual execution
 
 jobs:
   list-collaborators-and-committers:
@@ -11,54 +11,66 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Collaborators
+        id: collaborators
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching Collaborators..."
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' > collaborators.txt
+          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
 
-      - name: Fetch Today's Committers with Emails
+          echo "All Collaborators:"
+          echo "$COLLABORATORS"
+          echo "$COLLABORATORS" > collaborators.txt
+
+      - name: Fetch Today's Committers
+        id: committers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching committers with emails..."
+          echo "Fetching Users who committed today..."
           
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | \
-          jq -r '.[] | select(.commit.author.email) | "\(.author.login):\(.commit.author.email)"' | sort -u > committers_with_emails.txt
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
+
+          echo "Users who committed today:"
+          echo "$COMMITTERS"
+          echo "$COMMITTERS" > committers.txt
 
       - name: Find Collaborators Who Did Not Commit Today
         run: |
           echo "Finding Collaborators who did NOT commit today..."
           
-          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(cut -d ':' -f1 committers_with_emails.txt))
+          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
+
+          echo "Users who did NOT commit today:"
+          echo "$NOT_COMMITTED"
           echo "$NOT_COMMITTED" > not_committed.txt
 
-      - name: Auto Fetch Emails for Non-Committers
+      - name: Fetch Emails of Non-Committers
         run: |
-          echo "Fetching Emails for Non-Committers..."
-          
+          echo "Fetching Emails of Non-Committers..."
           declare -A EMAILS
 
-          while IFS=: read -r user email; do
-            EMAILS["$user"]="$email"
-          done < committers_with_emails.txt
+          # Manually define known emails (replace with real emails)
+          EMAILS["Yogesh-TDTL"]="yogesh.more@thedatatechlabs.com"
+          EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
 
           while read -r user; do
             email="${EMAILS[$user]:-Email not available}"
+            echo "$user: $email"
             echo "$user: $email" >> not_committed_with_emails.txt
           done < not_committed.txt
 
       - name: Send Email Notification to Non-Committers
         env:
-          SMTP_SERVER: "smtp.hostinger.com"  # Update based on your SMTP provider
-          SMTP_PORT: "587"
-          SMTP_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          SMTP_SERVER: "smtp.hostinger.com"  # Change for your SMTP provider
+          SMTP_PORT: "587"  # Common ports: 465 (SSL), 587 (TLS)
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}  # Store in GitHub Secrets
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}  # Store in GitHub Secrets
         run: |
           echo "Sending Email Notifications..."
           
@@ -69,8 +81,18 @@ jobs:
             if [[ "$email" != "Email not available" ]]; then
               echo "Sending email to $user at $email..."
               
-              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <noreply@yourdomain.com>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" | \
-              sendmail -S "$SMTP_SERVER" -p "$SMTP_PORT" -xu "$SMTP_USERNAME" -xp "$SMTP_PASSWORD" -f "noreply@yourdomain.com" -t "$email"
+              echo "Subject: Reminder: No Commit Today
+              From: DevOps Team <noreply@yourdomain.com>
+              To: $email
+
+              Hi $user,
+
+              We noticed that you haven't committed to the repository today.
+              Please make sure to push your updates before the end of the day.
+
+              Regards,
+              DevOps Team
+              " | sendmail -S "$SMTP_SERVER" -p "$SMTP_PORT" -xu "$SMTP_USERNAME" -xp "$SMTP_PASSWORD" -f "noreply@yourdomain.com" -t "$email"
 
               echo "Email sent to $user ($email)"
             fi
