@@ -31,7 +31,7 @@ jobs:
         run: |
           TODAY=$(date -u +"%Y-%m-%dT")
           echo "Fetching Users who committed today..."
-
+          
           COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                              -H "Accept: application/vnd.github.v3+json" \
                              "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
@@ -55,60 +55,42 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
           
-          echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth login
-          tls on
+          auth           on
+          tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile ~/.msmtp.log
-
+          logfile        ~/.msmtp.log
+          
           account hostinger
           host smtp.hostinger.com
           port 587
-          user "${{ secrets.EMAIL_USERNAME }}"
-          password "${{ secrets.EMAIL_PASSWORD }}"
-          from "${{ secrets.EMAIL_USERNAME }}"
+          user ${{ secrets.EMAIL_USERNAME }}
+          password ${{ secrets.EMAIL_PASSWORD }}
+          from ${{ secrets.EMAIL_USERNAME }}
           auth on
           tls on
-
+          
           account default : hostinger
           EOF
 
           chmod 600 ~/.msmtprc
 
-      - name: Debug Email Variables
+      - name: Send Email to Non-Committers
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          echo "Debug: EMAIL_USERNAME='${{ secrets.EMAIL_USERNAME }}'"
-          echo "Debug: RECIPIENT_EMAIL='${{ secrets.RECIPIENT_EMAIL }}'"
-
-      - name: Map GitHub Usernames to Emails
-        run: |
-          declare -A USER_EMAILS
-          USER_EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
-
           while IFS= read -r user; do
-            EMAIL_TO="${USER_EMAILS[$user]}"
-            if [[ -n "$EMAIL_TO" ]]; then
-              echo "DEBUG: Sending email to $EMAIL_TO..."
-              echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp \
-                --from="${{ secrets.EMAIL_USERNAME }}" \
-                --host=smtp.hostinger.com --port=587 --auth=on --tls=on \
-                --user="${{ secrets.EMAIL_USERNAME }}" \
-                --passwordeval "echo '${{ secrets.EMAIL_PASSWORD }}'" \
-                "$EMAIL_TO"
-            else
-              echo "Skipping: No email found for $user"
-            fi
+            EMAIL_TO="${user}@yourdomain.com"  # Update this based on actual email format
+            echo "Sending email to $EMAIL_TO..."
+
+            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
       - name: Send Summary Email to Admin
+        env:
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
-          echo "Sending summary email to admin..."
-          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp \
-            --from="${{ secrets.EMAIL_USERNAME }}" \
-            --host=smtp.hostinger.com --port=587 --auth=on --tls=on \
-            --user="${{ secrets.EMAIL_USERNAME }}" \
-            --passwordeval "echo '${{ secrets.EMAIL_PASSWORD }}'" \
-            "${{ secrets.RECIPIENT_EMAIL }}"
+          echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
