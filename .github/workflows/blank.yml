@@ -64,13 +64,7 @@ jobs:
           EOF
 
           chmod 600 ~/.msmtprc
-
-      - name: Debug SMTP Configuration
-        run: |
-          echo "Checking msmtp configuration..."
           cat ~/.msmtprc
-          echo "Testing msmtp..."
-          echo -e "Subject: SMTP Test\n\nThis is a test email." | msmtp --debug ${{ secrets.RECIPIENT_EMAIL }}
 
       - name: Send Email to Non-Committers
         env:
