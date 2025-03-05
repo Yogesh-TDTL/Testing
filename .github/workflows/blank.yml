@@ -1,0 +1,61 @@
+name: Check Collaborators' Push Activity
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # Runs daily at 12:00 UTC
+  workflow_dispatch:  # Allows manual execution
+
+jobs:
+  check-contributions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Get Repository Collaborators
+        id: get_collaborators
+        run: |
+          COLLABORATORS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
+          echo "collaborators=$COLLABORATORS" >> $GITHUB_ENV
+
+      - name: Check Contributions
+        id: check_contributions
+        run: |
+          last_week=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          active_collaborators=""
+          inactive_collaborators=""
+          
+          for user in ${{ env.collaborators }}; do
+            commits=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/commits?author=$user&since=$last_week")
+            
+            if [[ "$commits" == "[]" ]]; then
+              inactive_collaborators+="$user\n"
+            else
+              active_collaborators+="$user\n"
+            fi
+          done
+
+          echo -e "Active Collaborators:\n$active_collaborators"
+          echo -e "Inactive Collaborators:\n$inactive_collaborators"
+          
+          echo "inactive_collaborators=$inactive_collaborators" >> $GITHUB_ENV
+
+      - name: Send Email to Inactive Collaborators
+        if: env.inactive_collaborators != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "Reminder: Push Your Code!"
+          body: |
+            The following collaborators have not pushed code in the last 7 days:
+            ${{ env.inactive_collaborators }}
+            
+            Please push your updates as soon as possible.
+          to: ${{ secrets.RECIPIENT_EMAIL }}
+          from: GitHub Actions
