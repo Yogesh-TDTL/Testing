@@ -102,21 +102,35 @@ jobs:
       - name: Send Email Notification to Non-Committers
         run: |
           echo "Sending Email Notifications..."
-
+          # Assign the sender email to a variable (ensuring no extra newlines)
+          FROM_EMAIL="${{ secrets.EMAIL_USERNAME }}"
+          
           while IFS=: read -r user email; do
             email=$(echo "$email" | xargs)  # Trim spaces
-
+            
             if [[ "$email" != "Email not available" && -n "$email" ]]; then
-              echo "Processing: User='$user' | Email='$email'"
+              echo "Sending email to $user at $email..."
+              
+              # Write the email content with proper header formatting using a here-document.
+              cat <<EOF > email.txt
+                Subject: Reminder: No Commit Today
+                From: DevOps Team <${FROM_EMAIL}>
+                To: $email
+                
+                Hi $user,
+                
+                We noticed that you haven't committed to the repository today.
+                Please make sure to push your updates before the end of the day.
+                
+                Regards,
+                DevOps Team
+                EOF
 
-              # Double-check that the email variable is clean
               echo "Email content preview:"
-              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team"
+              cat email.txt
 
-              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
-
-              echo "Running msmtp command..."
-              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
+              # Use msmtp with the -t option so that it extracts the recipient from the headers.
+              cat email.txt | msmtp --debug --from="${FROM_EMAIL}" -t
 
               echo "Email sent to $user ($email)"
             else
