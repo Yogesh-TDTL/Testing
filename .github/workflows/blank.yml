@@ -1,4 +1,4 @@
-name: List Collaborators & Today's Committers
+name: List Collaborators & Commit Activity
 
 on:
   workflow_dispatch:  # Allows manual execution
@@ -11,20 +11,40 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch Collaborators
+        id: collaborators
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Collaborators:"
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login'
+          echo "Fetching Collaborators..."
+          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
+
+          echo "All Collaborators:"
+          echo "$COLLABORATORS"
+          echo "$COLLABORATORS" > collaborators.txt
 
       - name: Fetch Today's Committers
+        id: committers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TODAY=$(date -u +"%Y-%m-%dT")
+          echo "Fetching Users who committed today..."
+          
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
+
           echo "Users who committed today:"
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].commit.author.name' | sort -u
+          echo "$COMMITTERS"
+          echo "$COMMITTERS" > committers.txt
+
+      - name: Find Collaborators Who Did Not Commit Today
+        run: |
+          echo "Finding Collaborators who did NOT commit today..."
+          
+          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
+
+          echo "Users who did NOT commit today:"
+          echo "$NOT_COMMITTED"
