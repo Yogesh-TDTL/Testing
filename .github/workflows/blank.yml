@@ -90,22 +90,27 @@ jobs:
           EOF
 
           chmod 600 ~/.msmtprc
+      
+      - name: Debug Non-Committers Email List
+        run: |
+          echo "Checking email list format..."
+          cat not_committed_with_emails.txt
 
       - name: Send Email Notification to Non-Committers
         run: |
           echo "Sending Email Notifications..."
 
-          while read -r line; do
-            user=$(echo "$line" | cut -d ':' -f1)
-            email=$(echo "$line" | cut -d ':' -f2 | xargs)
+          while IFS=: read -r user email; do
+            email=$(echo "$email" | xargs)  # Trim whitespace
 
-            if [[ "$email" != "Email not available" ]]; then
+            if [[ "$email" != "Email not available" && -n "$email" ]]; then
               echo "Sending email to $user at $email..."
               
               echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" | \
-              msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -t "$email"
+              msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} "$email"
 
               echo "Email sent to $user ($email)"
+            else
+              echo "Skipping $user: No valid email found."
             fi
           done < not_committed_with_emails.txt
-
