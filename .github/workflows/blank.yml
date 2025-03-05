@@ -81,10 +81,10 @@ jobs:
           AuthPass=${{ secrets.EMAIL_PASSWORD }}
           UseTLS=YES
           UseSTARTTLS=YES
+          FromLineOverride=YES
           EOF"
 
           sudo chmod 600 /etc/ssmtp/ssmtp.conf
-
 
       - name: Debug Email Formatting
         run: |
@@ -94,28 +94,18 @@ jobs:
             echo "User: '$user' | Email: '$email'"
           done < not_committed_with_emails.txt
 
-      - name: Send Email Notification to Non-Committers
+      - name: Send Email using sendmail
         run: |
-          echo "Sending Email Notifications..."
+          echo "Subject: Reminder: No Commit Today" > email.txt
+          echo "From: DevOps Team <${{ secrets.EMAIL_USERNAME }}>" >> email.txt
+          echo "To: $email" >> email.txt
+          echo "" >> email.txt
+          echo "Hi $user," >> email.txt
+          echo "" >> email.txt
+          echo "We noticed that you haven't committed to the repository today." >> email.txt
+          echo "Please push your updates before the end of the day." >> email.txt
+          echo "" >> email.txt
+          echo "Regards," >> email.txt
+          echo "DevOps Team" >> email.txt
+          sendmail -v "$email" < email.txt
 
-          while IFS=: read -r user email; do
-            email=$(echo "$email" | tr -d '[:space:]' | tr -d '\r')
-
-            if [[ -z "$email" ]]; then
-              echo "Skipping $user: No email found."
-              continue
-            fi
-            
-            if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-              echo "Skipping $user: Invalid email format - '$email'"
-              continue
-            fi
-
-            echo "Processing: User='$user' | Email='$email'"
-            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
-
-            echo "Sending email using ssmtp..."
-            ssmtp "$email" < email.txt
-
-            echo "Email sent to $user ($email)"
-          done < not_committed_with_emails.txt
