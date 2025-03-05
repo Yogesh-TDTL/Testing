@@ -1,7 +1,7 @@
 name: List Collaborators & Commit Activity
 
 on:
-  workflow_dispatch:  # Allows manual execution
+  workflow_dispatch:
 
 jobs:
   list-collaborators-and-committers:
@@ -23,6 +23,25 @@ jobs:
           echo "All Collaborators:"
           echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
+
+      - name: Fetch Emails of Collaborators
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching Emails of Collaborators..."
+          while read -r user; do
+            email=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                          -H "Accept: application/vnd.github.v3+json" \
+                          "https://api.github.com/users/$user" | jq -r '.email')
+
+            if [[ "$email" != "null" ]]; then
+              echo "$user: $email"
+              echo "$user: $email" >> collaborators_with_emails.txt
+            else
+              echo "$user: Email not available"
+              echo "$user: Email not available" >> collaborators_with_emails.txt
+            fi
+          done < collaborators.txt
 
       - name: Fetch Today's Committers
         id: committers
@@ -48,3 +67,23 @@ jobs:
 
           echo "Users who did NOT commit today:"
           echo "$NOT_COMMITTED"
+          echo "$NOT_COMMITTED" > not_committed.txt
+
+      - name: Fetch Emails of Users Who Did Not Commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching Emails of Users Who Did Not Commit Today..."
+          while read -r user; do
+            email=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                          -H "Accept: application/vnd.github.v3+json" \
+                          "https://api.github.com/users/$user" | jq -r '.email')
+
+            if [[ "$email" != "null" ]]; then
+              echo "$user: $email"
+              echo "$user: $email" >> not_committed_with_emails.txt
+            else
+              echo "$user: Email not available"
+              echo "$user: Email not available" >> not_committed_with_emails.txt
+            fi
+          done < not_committed.txt
