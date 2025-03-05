@@ -55,26 +55,28 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
           
+          echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth           on
+          auth           login
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
-          
+
           account hostinger
           host smtp.hostinger.com
-          port 587
-          user ${{ secrets.EMAIL_USERNAME }}
-          password ${{ secrets.EMAIL_PASSWORD }}
-          from ${{ secrets.EMAIL_USERNAME }}
-          auth on
+          port 465
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          auth login
           tls on
-          
+
           account default : hostinger
           EOF
 
           chmod 600 ~/.msmtprc
+
 
       - name: Send Email to Non-Committers
         env:
