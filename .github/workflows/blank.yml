@@ -91,10 +91,13 @@ jobs:
 
           chmod 600 ~/.msmtprc
       
-      - name: Debug Non-Committers Email List
+      - name: Debug Email Formatting
         run: |
-          echo "Checking email list format..."
-          cat not_committed_with_emails.txt
+          while IFS=: read -r user email; do
+            email=$(echo "$email" | xargs)  # Trim spaces
+            echo "User: '$user' | Email: '$email'"
+          done < not_committed_with_emails.txt
+
 
       - name: Send Email Notification to Non-Committers
         run: |
@@ -105,12 +108,14 @@ jobs:
 
             if [[ "$email" != "Email not available" && -n "$email" ]]; then
               echo "Sending email to $user at $email..."
-              
-              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" | \
-              msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} "$email"
+
+              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
+
+              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} "$email"
 
               echo "Email sent to $user ($email)"
             else
               echo "Skipping $user: No valid email found."
             fi
           done < not_committed_with_emails.txt
+
