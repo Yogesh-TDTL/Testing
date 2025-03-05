@@ -76,16 +76,21 @@ jobs:
 
           chmod 600 ~/.msmtprc
 
-      - name: Send Email to Non-Committers
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+      - name: Map GitHub Usernames to Emails
         run: |
-          while IFS= read -r user; do
-            EMAIL_TO="$pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
-            echo "Sending email to $EMAIL_TO..."
+          declare -A USER_EMAILS
+          USER_EMAILS["Pratham-TDTL"]="pratham.chatke@thedatatechlabs.com"
 
-            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          while IFS= read -r user; do
+            EMAIL_TO="${USER_EMAILS[$user]}"
+            if [[ -n "$EMAIL_TO" ]]; then
+              echo "DEBUG: Sending email to $EMAIL_TO..."
+              echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            else
+              echo "Skipping: No email found for $user"
+            fi
           done < non_committers.txt
+
 
       - name: Send Summary Email to Admin
         env:
