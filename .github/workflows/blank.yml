@@ -45,6 +45,21 @@ jobs:
           echo "Users who did NOT commit today:"
           echo "$NOT_COMMITTED"
           echo "$NOT_COMMITTED" > non_committers.txt
+
+      - name: Fetch Email of Non-Committers
+        run: |
+          while IFS= read -r user; do
+            EMAIL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                          -H "Accept: application/vnd.github.v3+json" \
+                          "https://api.github.com/users/$user" | jq -r '.email')
+
+            if [ "$EMAIL" == "null" ] || [ -z "$EMAIL" ]; then
+              EMAIL="${user}@users.noreply.github.com"
+            fi
+
+            echo "$user=$EMAIL" >> user_emails.txt
+          done < non_committers.txt
+
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
