@@ -66,32 +66,25 @@ jobs:
           echo "Final list of users with emails:"
           cat not_committed_with_emails.txt || echo "No users to notify."
 
-      - name: Install msmtp
+      - name: Install ssmtp
         run: |
           sudo apt-get update
-          sudo apt-get install -y msmtp msmtp-mta
+          sudo apt-get install -y ssmtp
 
-      - name: Configure msmtp
+      - name: Configure ssmtp
         run: |
-          echo "Setting up msmtp configuration..."
-          cat <<EOF > ~/.msmtprc
-          defaults
-          auth           on
-          tls            on
-          tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
+          echo "Setting up ssmtp configuration..."
+          sudo bash -c "cat > /etc/ssmtp/ssmtp.conf <<EOF
+          root=${{ secrets.EMAIL_USERNAME }}
+          mailhub=smtp.hostinger.com:587
+          AuthUser=${{ secrets.EMAIL_USERNAME }}
+          AuthPass=${{ secrets.EMAIL_PASSWORD }}
+          UseTLS=YES
+          UseSTARTTLS=YES
+          EOF"
 
-          account hostinger
-          host smtp.hostinger.com
-          port 587
-          from ${{ secrets.EMAIL_USERNAME }}
-          user ${{ secrets.EMAIL_USERNAME }}
-          password ${{ secrets.EMAIL_PASSWORD }}
+          sudo chmod 600 /etc/ssmtp/ssmtp.conf
 
-          account default : hostinger
-          EOF
-
-          chmod 600 ~/.msmtprc
 
       - name: Debug Email Formatting
         run: |
@@ -121,8 +114,8 @@ jobs:
             echo "Processing: User='$user' | Email='$email'"
             echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
 
-            echo "Running msmtp command..."
-            cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
+            echo "Sending email using ssmtp..."
+            ssmtp "$email" < email.txt
 
             echo "Email sent to $user ($email)"
           done < not_committed_with_emails.txt
