@@ -58,7 +58,7 @@ jobs:
           echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth on
+          auth login
           tls on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile ~/.msmtp.log
