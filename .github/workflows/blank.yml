@@ -105,21 +105,23 @@ jobs:
 
           while IFS=: read -r user email; do
             email=$(echo "$email" | tr -d '\r' | xargs)  # Remove hidden characters and trim spaces
+            
+            # Debugging: Print the email to check its format
+            echo "Processing: User='$user' | Email='$email'"
 
-            if [[ "$email" != "Email not available" && -n "$email" ]]; then
-              echo "Processing: User='$user' | Email='$email'"
-
-              # Verify how msmtp interprets the email
-              echo "Email content preview:"
-              echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
-
-              echo "Running msmtp command..."
-              cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
-
-              echo "Email sent to $user ($email)"
-            else
-              echo "Skipping $user: No valid email found."
+            # Validate email format
+            if [[ ! "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+              echo "Skipping $user: Invalid email format - '$email'"
+              continue
             fi
+            
+            echo "Email content preview:"
+            echo -e "Subject: Reminder: No Commit Today\nFrom: DevOps Team <${{ secrets.EMAIL_USERNAME }}>\nTo: $email\n\nHi $user,\n\nWe noticed that you haven't committed to the repository today.\nPlease make sure to push your updates before the end of the day.\n\nRegards,\nDevOps Team" > email.txt
+
+            echo "Running msmtp command..."
+            cat email.txt | msmtp --debug --from=${{ secrets.EMAIL_USERNAME }} -- "$email"
+
+            echo "Email sent to $user ($email)"
           done < not_committed_with_emails.txt
 
 
