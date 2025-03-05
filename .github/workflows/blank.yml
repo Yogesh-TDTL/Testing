@@ -81,7 +81,7 @@ jobs:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
-            EMAIL_TO="${user}@yourdomain.com"  # Update this based on actual email format
+            EMAIL_TO="pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
             echo "Sending email to $EMAIL_TO..."
 
             echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
