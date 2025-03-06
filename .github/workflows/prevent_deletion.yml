@@ -13,13 +13,18 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Ensure we get the previous commit
 
       - name: Check for Deleted Files
         id: check_deletions
         run: |
-          # Check if HEAD has a parent commit
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            deleted_files=$(git diff --diff-filter=D --name-only HEAD^ HEAD)
+          # Get the previous commit
+          previous_commit=$(git rev-parse HEAD^ 2>/dev/null || echo "")
+
+          # Check if there is a previous commit
+          if [ -n "$previous_commit" ]; then
+            deleted_files=$(git diff --diff-filter=D --name-only $previous_commit HEAD)
           else
             deleted_files=""
           fi
@@ -37,7 +42,7 @@ jobs:
         if: env.deleted == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.gmail.com  # Change if using Outlook, Yahoo, etc.
+          server_address: smtp.gmail.com
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
