@@ -1,38 +1,42 @@
-name: Notify Admin on File Deletion
- 
+name: Alert Admin on File Deletion
+
 on:
   push:
     branches:
+      - main
       - frontend
       - backend
- 
+
 jobs:
-  notify:
+  check_deletion:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Check for Deleted Files
         id: check_deletions
         run: |
           git fetch origin ${{ github.ref }} --depth=1
           deleted_files=$(git diff --diff-filter=D --name-only HEAD^ HEAD)
           if [ -n "$deleted_files" ]; then
+            echo "File deletion detected! Sending email alert."
             echo "deleted=true" >> $GITHUB_ENV
-            echo "Deleted files: $deleted_files"
             echo "DELETED_FILES=$deleted_files" >> $GITHUB_ENV
           else
             echo "No files deleted."
             echo "deleted=false" >> $GITHUB_ENV
           fi
- 
+
       - name: Send Email Notification
         if: env.deleted == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.gmail.com
+          server_address: smtp.gmail.com  # Change for Outlook, Yahoo, etc.
           server_port: 587
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Alert: File Deletion in Repository"
-          to: "admin@example.com"
-          from: "GitHub Actions <admin@example.com>"
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "⚠️ Alert: File Deletion in Repository"
+          to: "pratham.chatke@thedatatechlabs.com"
+          from: "GitHub Actions <pratham.chatke@thedatatechlabs.com>"
           body: "The following files were deleted in ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}"
