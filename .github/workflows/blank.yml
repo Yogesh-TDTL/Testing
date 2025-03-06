@@ -49,16 +49,20 @@ jobs:
       - name: Fetch Email of Non-Committers
         run: |
           while IFS= read -r user; do
+            echo "Fetching email for $user..."
             EMAIL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                           -H "Accept: application/vnd.github.v3+json" \
                           "https://api.github.com/users/$user" | jq -r '.email')
-
+            
+            echo "Fetched email for $user: $EMAIL"  # Debug line to check email fetched
+            
             if [ "$EMAIL" == "null" ] || [ -z "$EMAIL" ]; then
               EMAIL="${user}@users.noreply.github.com"
             fi
-
+      
             echo "$user=$EMAIL" >> user_emails.txt
           done < non_committers.txt
+
 
       - name: Install and Configure msmtp
         run: |
