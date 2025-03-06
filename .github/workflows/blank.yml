@@ -1,7 +1,7 @@
 name: Notify Non-Committers via Hostinger SMTP
 
 on:
-  workflow_dispatch:  # Allows manual execution
+  workflow_dispatch:
 
 jobs:
   list-collaborators-and-notify:
@@ -14,30 +14,20 @@ jobs:
         run: |
           sudo apt update && sudo apt install -y gh
 
-      - name: Authenticate with GitHub CLI
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
       - name: Fetch Collaborators
-        id: collaborators
         run: |
           echo "Fetching Collaborators..."
           gh api repos/${{ github.repository }}/collaborators --paginate --jq '.[].login' > collaborators.txt
           echo "Collaborators fetched successfully."
 
       - name: Fetch Committers (Last 24 Hours)
-        id: committers
         run: |
           SINCE=$(date -u -d "24 hours ago" +"%Y-%m-%dT%H:%M:%SZ")
           echo "Fetching Users who committed in the last 24 hours..."
-          
           gh api repos/${{ github.repository }}/commits?since=$SINCE --paginate --jq '.[].author.login' | sort -u > committers.txt
           echo "Committers fetched successfully."
 
-      - name: Find Collaborators Who Did Not Commit
-        id: non_committers
+      - name: Find Non-Committers
         run: |
           echo "Finding Collaborators who did NOT commit today..."
           sort collaborators.txt -o collaborators.txt
@@ -46,15 +36,11 @@ jobs:
           echo "Non-committers identified."
 
       - name: Fetch Emails of Non-Committers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           > user_emails.txt
           while IFS= read -r user; do
             echo "Fetching email for $user..."
-            EMAIL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                          -H "Accept: application/vnd.github.v3+json" \
-                          "https://api.github.com/users/$user" | jq -r '.email')
+            EMAIL=$(gh api users/$user --jq '.email')
 
             if [ "$EMAIL" == "null" ] || [ -z "$EMAIL" ]; then
               EMAIL="${user}@users.noreply.github.com"
@@ -63,6 +49,7 @@ jobs:
             echo "$user=$EMAIL" >> user_emails.txt
             echo "Email fetched for $user: $EMAIL"
           done < non_committers.txt
+
 
       - name: Install and Configure msmtp
         run: |
