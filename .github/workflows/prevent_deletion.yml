@@ -15,6 +15,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2  # Ensure we get the previous commit
+      - name: Install and Configure msmtp
+        run: |
+          sudo apt-get update && sudo apt-get install -y msmtp
+          
+          echo "Creating msmtp config file..."
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           login
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          account hostinger
+          host smtp.hostinger.com
+          port 465
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          auth login
+          tls on
+          account default : hostinger
+          EOF
+          chmod 600 ~/.msmtprc
 
       - name: Check for Deleted Files
         id: check_deletions
@@ -40,13 +62,10 @@ jobs:
 
       - name: Send Email Notification
         if: env.deleted == 'true'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "⚠️ Alert: File Deletion in Repository"
-          to: "pratham.chatke@thedatatechlabs.com"
-          from: "GitHub Actions <pratham.chatke@thedatatechlabs.com>"
-          body: "The following files were deleted in ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}"
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          echo "Sending email alert for deleted files..."
+          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted from ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}\n\nPlease review the changes.\n\nBest,\nGitHub Actions" \
+            | msmtp --from=$EMAIL_USERNAME --host=smtp.gmail.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "pratham.chatke@thedatatechlabs.com"
+      
