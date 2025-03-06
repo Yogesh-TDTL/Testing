@@ -17,8 +17,13 @@ jobs:
       - name: Check for Deleted Files
         id: check_deletions
         run: |
-          git fetch origin ${{ github.ref }} --depth=1
-          deleted_files=$(git diff --diff-filter=D --name-only HEAD^ HEAD)
+          # Check if HEAD has a parent commit
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            deleted_files=$(git diff --diff-filter=D --name-only HEAD^ HEAD)
+          else
+            deleted_files=""
+          fi
+
           if [ -n "$deleted_files" ]; then
             echo "File deletion detected! Sending email alert."
             echo "deleted=true" >> $GITHUB_ENV
@@ -32,7 +37,7 @@ jobs:
         if: env.deleted == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.gmail.com  # Change for Outlook, Yahoo, etc.
+          server_address: smtp.gmail.com  # Change if using Outlook, Yahoo, etc.
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
