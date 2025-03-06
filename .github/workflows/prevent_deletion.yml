@@ -1,36 +1,38 @@
-name: Prevent File Deletion
-
+name: Notify Admin on File Deletion
+ 
 on:
-  pull_request:
-    types: [opened, synchronize]
-
+  push:
+    branches:
+      - frontend
+      - backend
+ 
 jobs:
-  check-file-deletion:
+  notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
       - name: Check for Deleted Files
-        id: deleted_files
+        id: check_deletions
         run: |
-          if git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | grep ^D; then
-            echo "File deletion detected!"
-            echo "deletion=true" >> $GITHUB_ENV
+          git fetch origin ${{ github.ref }} --depth=1
+          deleted_files=$(git diff --diff-filter=D --name-only HEAD^ HEAD)
+          if [ -n "$deleted_files" ]; then
+            echo "deleted=true" >> $GITHUB_ENV
+            echo "Deleted files: $deleted_files"
+            echo "DELETED_FILES=$deleted_files" >> $GITHUB_ENV
           else
-            echo "No file deletions found"
-            echo "deletion=false" >> $GITHUB_ENV
+            echo "No files deleted."
+            echo "deleted=false" >> $GITHUB_ENV
           fi
-
-      - name: Block PR If Deletions Found
-        if: env.deletion == 'true'
-        run: |
-          echo "❌ File deletion is not allowed! Request approval from an admin."
-          exit 1
-
-      - name: Request Admin Approval
-        if: env.deletion == 'true'
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "⚠️ File deletion detected! @repo-admin Please review and approve."
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
+      - name: Send Email Notification
+        if: env.deleted == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Alert: File Deletion in Repository"
+          to: "admin@example.com"
+          from: "GitHub Actions <admin@example.com>"
+          body: "The following files were deleted in ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}"
