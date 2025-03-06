@@ -65,7 +65,7 @@ jobs:
           logfile        ~/.msmtp.log
           account hostinger
           host smtp.hostinger.com
-          port 465  # Change to 587 if you want to use TLS
+          port 587  # Port 587 is recommended for TLS
           user "${{ secrets.EMAIL_USERNAME }}"
           password "${{ secrets.EMAIL_PASSWORD }}"
           from "${{ secrets.EMAIL_USERNAME }}"
@@ -74,6 +74,7 @@ jobs:
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
+
 
 
       - name: Send Email to Non-Committers
