@@ -46,19 +46,20 @@ jobs:
           echo "$NOT_COMMITTED"
           echo "$NOT_COMMITTED" > non_committers.txt
 
-      - name: Fetch Email of Non-Committers
+      - name: Fetch Emails of Users
         run: |
+          > user_emails.txt
           while IFS= read -r user; do
-            EMAIL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                          -H "Accept: application/vnd.github.v3+json" \
-                          "https://api.github.com/users/$user" | jq -r '.email')
+            echo "Fetching email for $user..."
+            EMAIL=$(gh api users/$user --jq '.email')
 
             if [ "$EMAIL" == "null" ] || [ -z "$EMAIL" ]; then
               EMAIL="${user}@users.noreply.github.com"
             fi
 
             echo "$user=$EMAIL" >> user_emails.txt
-          done < non_committers.txt
+            echo "Email fetched for $user: $EMAIL"
+          done < all_users.txtitters.txt
 
       - name: Install and Configure msmtp
         run: |
