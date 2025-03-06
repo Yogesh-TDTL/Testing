@@ -1,0 +1,29 @@
+name: Prevent File Deletion
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  check-file-deletion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check for Deleted Files
+        id: deleted_files
+        run: |
+          if git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | grep ^D; then
+            echo "File deletion detected"
+            echo "deletion=true" >> $GITHUB_ENV
+          else
+            echo "No file deletions found"
+            echo "deletion=false" >> $GITHUB_ENV
+          fi
+
+      - name: Fail if Deletions are Found
+        if: env.deletion == 'true'
+        run: |
+          echo "File deletion is not allowed! Request approval from an admin."
+          exit 1
