@@ -76,6 +76,9 @@ jobs:
           chmod 600 ~/.msmtprc
 
 
+      - name: Check permissions of msmtp config file
+        run: |
+          ls -l ~/.msmtprc
 
       - name: Send Email to Non-Committers
         run: |
