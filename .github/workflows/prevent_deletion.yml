@@ -15,15 +15,22 @@ jobs:
         id: deleted_files
         run: |
           if git diff --name-status origin/${{ github.event.pull_request.base.ref }}...HEAD | grep ^D; then
-            echo "File deletion detected"
+            echo "File deletion detected!"
             echo "deletion=true" >> $GITHUB_ENV
           else
             echo "No file deletions found"
             echo "deletion=false" >> $GITHUB_ENV
           fi
 
-      - name: Fail if Deletions are Found
+      - name: Block PR If Deletions Found
         if: env.deletion == 'true'
         run: |
-          echo "File deletion is not allowed! Request approval from an admin."
+          echo "❌ File deletion is not allowed! Request approval from an admin."
           exit 1
+
+      - name: Request Admin Approval
+        if: env.deletion == 'true'
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "⚠️ File deletion detected! @repo-admin Please review and approve."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
