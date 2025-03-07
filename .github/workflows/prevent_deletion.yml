@@ -74,6 +74,6 @@ jobs:
         run: |
           ADMIN_EMAIL="pratham.chatke@thedatatechlabs.com"
           echo "Sending email alert to admin ($ADMIN_EMAIL)..."
-
+      
           echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted:\n\n${{ env.DELETED_FILES }}\n\nDeleted by: ${{ env.DELETER }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
-            | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --password "${{ secrets.EMAIL_PASSWORD
+            | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval 'echo "${{ secrets.EMAIL_PASSWORD }}"' "$ADMIN_EMAIL"
