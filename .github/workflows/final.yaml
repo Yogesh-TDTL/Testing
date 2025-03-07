@@ -1,4 +1,4 @@
-name: Notify Non-Committers via MAil
+name: Notify Non-Committers via Mail
 
 on:
   workflow_dispatch:  # Allows manual execution
@@ -76,14 +76,14 @@ jobs:
           while IFS= read -r user; do
             EMAIL_TO="pratham.chatke@thedatatechlabs.com"  # Update this based on actual email format
             echo "Sending email to $EMAIL_TO..."
-            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
       - name: Send Summary Email to Admins
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          RECIPIENTS="pratham.chatke@thedatatechlabs.com,yogesh.more@thedatatechlabs.com,test.name@tdtl.world"  # Add multiple emails separated by commas
+          RECIPIENTS="nikhil.pawar@tdtl.world,imran.mulla@tdtl.world,vrushabh.bhuse@tdtl.world"  # Add multiple emails separated by commas
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
           
           echo "Sending summary email to: $RECIPIENTS..."
