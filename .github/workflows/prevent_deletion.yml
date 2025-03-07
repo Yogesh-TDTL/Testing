@@ -18,23 +18,20 @@ jobs:
           
       - name: Install and Configure msmtp
         run: |
-          sudo apt-get update && sudo apt-get install -y msmtp
-          
           echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth           login
+          auth           on
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
+          timeout        10   # Add a timeout to avoid infinite waiting
           account hostinger
           host smtp.hostinger.com
           port 465
           user "${{ secrets.EMAIL_USERNAME }}"
           password "${{ secrets.EMAIL_PASSWORD }}"
           from "${{ secrets.EMAIL_USERNAME }}"
-          auth login
-          tls on
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
@@ -66,7 +63,8 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          ADMIN_EMAIL="pratham.chatke@thedatatechlabs.com"  # Replace with the actual admin email
+          ADMIN_EMAIL="pratham.chatke@thedatatechlabs.com"
           echo "Sending email alert to admin ($ADMIN_EMAIL)..."
-          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted from ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}\n\nDeleted by: ${{ env.DELETER }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
-            | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$ADMIN_EMAIL"
+        
+          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted:\n\n${{ env.DELETED_FILES }}\n\nDeleted by: ${{ env.DELETER }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
+            | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$ADMIN_EMAIL"
