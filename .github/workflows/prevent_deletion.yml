@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2  # Ensure we get the previous commit
+          
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
@@ -37,7 +38,7 @@ jobs:
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
-
+          
       - name: Check for Deleted Files
         id: check_deletions
         run: |
@@ -60,12 +61,12 @@ jobs:
             echo "deleted=false" >> $GITHUB_ENV
           fi
 
-      - name: Send Email Notification
+      - name: Send Email Notification to Admin
         if: env.deleted == 'true'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          echo "Sending email alert for deleted files..."
-          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted from ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}\n\nPlease review the changes.\n\nBest,\nGitHub Actions" \
-            | msmtp --from=$EMAIL_USERNAME --host=smtp.gmail.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "pratham.chatke@thedatatechlabs.com"
-      
+          ADMIN_EMAIL="pratham.chatke@thedatatechlabs.com"  # Replace with the actual admin email
+          echo "Sending email alert to admin ($ADMIN_EMAIL)..."
+          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted from ${{ github.repository }}:\n\n${{ env.DELETED_FILES }}\n\nDeleted by: ${{ env.DELETER }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
+            | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$ADMIN_EMAIL"
