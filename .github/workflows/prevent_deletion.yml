@@ -60,7 +60,7 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          ADMIN_EMAIL="pratham.chatke@thedatatechlabs.com"
+          ADMIN_EMAIL="yogesh.more@thedatatechlabs.com"
           echo "Sending email alert to admin ($ADMIN_EMAIL)..."
 
           echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted:\n\n${{ env.DELETED_FILES }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
