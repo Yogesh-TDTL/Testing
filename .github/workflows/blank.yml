@@ -23,7 +23,7 @@ jobs:
           echo "$COLLABORATORS" > collaborators.txt
           
           # Define managers to exclude
-          MANAGERS=("Yogesh-TDTL")  # Replace with actual usernames
+          MANAGERS=("Pratham-TDTL")  # Replace with actual usernames
 
           # Remove managers from collaborators
           grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
