@@ -22,7 +22,14 @@ jobs:
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                               -H "Accept: application/vnd.github.v3+json" \
                               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
+          
           echo "$COLLABORATORS" > collaborators.txt
+          
+          # Define managers to exclude
+          MANAGERS=("manager1" "manager2" "manager3")  # Replace with actual usernames
+
+          # Remove managers from collaborators
+          grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
 
       - name: Fetch Today's Committers
         id: committers
@@ -81,12 +88,4 @@ jobs:
             echo -e "Subject: 🚨 Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations. Immediate action is required—ensure your contributions are updated without further delay.\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly. \nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
-      - name: Send Summary Email to Admins
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          RECIPIENTS="nikhil.pawar@tdtl.world,imran.mulla@tdtl.world,vrushabh.bhuse@tdtl.world"
-          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
-          
-          echo -e "Subject: 📊 Daily Commit Report\n\nDespite the reminder sent yesterday, ${user} has not committed any updates to the repository. This is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken.\n$NON_COMMITTED_LIST" | \
-          msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" $(echo $RECIPIENTS | tr ',' ' ')
+     
