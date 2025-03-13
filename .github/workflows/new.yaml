@@ -23,35 +23,6 @@ jobs:
           echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
 
-      - name: Fetch Today's Committers for Frontend and Backend
-        id: committers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching Users who committed today on frontend..."
-          
-          # Fetch commits for the 'frontend' branch
-          FRONTEND_COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                                     -H "Accept: application/vnd.github.v3+json" \
-                                     "https://api.github.com/repos/${{ github.repository }}/commits?sha=frontend&since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
-          echo "Frontend Committers:"
-          echo "$FRONTEND_COMMITTERS"
-          
-          echo "Fetching Users who committed today on backend..."
-          
-          # Fetch commits for the 'backend' branch
-          BACKEND_COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                                     -H "Accept: application/vnd.github.v3+json" \
-                                     "https://api.github.com/repos/${{ github.repository }}/commits?sha=backend&since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
-          echo "Backend Committers:"
-          echo "$BACKEND_COMMITTERS"
-          
-          # Combine frontend and backend committers
-          COMMITTERS=$(echo -e "$FRONTEND_COMMITTERS\n$BACKEND_COMMITTERS" | sort -u)
-          echo "All Committers:"
-          echo "$COMMITTERS"
-          echo "$COMMITTERS" > committers.txt
 
       - name: Find Collaborators Who Did Not Commit Today
         id: non_committers
@@ -62,24 +33,6 @@ jobs:
           echo "Users who did NOT commit today:"
           echo "$NOT_COMMITTED"
           echo "$NOT_COMMITTED" > non_committers.txt
-
-      - name: Fetch Email of Non-Committers
-        run: |
-          while IFS= read -r user; do
-            echo "Fetching email for $user..."
-            EMAIL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                          -H "Accept: application/vnd.github.v3+json" \
-                          "https://api.github.com/users/$user" | jq -r '.email')
-            
-            echo "Fetched email for $user: $EMAIL"  # Debug line to check email fetched
-            
-            if [ "$EMAIL" == "null" ] || [ -z "$EMAIL" ]; then
-              EMAIL="${user}@users.noreply.github.com"
-            fi
-      
-            echo "$user=$EMAIL" >> user_emails.txt
-          done < non_committers.txt
-
 
       - name: Install and Configure msmtp
         run: |
@@ -108,16 +61,16 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          while IFS='=' read -r user email; do
-            echo "Sending email to $email..."
-            echo -e "Subject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed to the repository today. Please make sure to contribute.\n\nBest,\nDevOps Team" \
-              | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$email"
-          done < user_emails.txt
+          RECIPIENT="pratham.chatke@thedatatechlabs.com"
+          echo "Sending email to $RECIPIENT..."
+          echo -e "Subject: Reminder - No Commit Today!\n\nHello,\n\nThe following users haven't committed to the repository today:\n$(cat user_emails.txt)\n\nBest,\nDevOps Team" \
+            | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT"
+
 
       - name: Send Summary Email to Admin
         env:
-          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
+          RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
           echo -e "Subject: Daily Commit Report\n\nThe following users did not commit today:\n$NON_COMMITTED_LIST" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
