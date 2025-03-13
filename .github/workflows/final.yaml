@@ -3,8 +3,8 @@ name: Notify Non-Committers via Mail
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 19 * * 1-5"  # Runs at 7 PM UTC, Monday to Friday
-    - cron: "0 9 * * 1-5"   # Runs at 9 AM UTC, Monday to Friday
+    - cron: "0 19 * * 1-5"  # 7 PM UTC (Monday - Friday)
+    - cron: "0 9 * * 1-5"   # 9 AM UTC (Monday - Friday)
 
 jobs:
   list-collaborators-and-notify:
@@ -19,35 +19,35 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching Collaborators..."
-          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                              -H "Accept: application/vnd.github.v3+json" \
-                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-          
-          echo "$COLLABORATORS" > collaborators.txt
-          
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/collaborators" | \
+               jq -r '.[].login' > collaborators.txt
+
           # Define managers to exclude
           MANAGERS=("manager1" "manager2" "manager3")  # Replace with actual usernames
 
           # Remove managers from collaborators
-          grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
+          awk 'NR==FNR{exclude[$0];next} !($0 in exclude)' <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > filtered_collaborators.txt
 
-      - name: Fetch Today's Committers
+      - name: Fetch Last 24 Hours Committers
         id: committers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching Users who committed today..."
+          SINCE=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Fetching committers since $SINCE..."
           
-          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                             -H "Accept: application/vnd.github.v3+json" \
-                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
-          echo "$COMMITTERS" > committers.txt
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/commits?since=$SINCE" | \
+               jq -r '.[].author.login' | sort -u > committers.txt
 
       - name: Find Non-Committers
         id: non_committers
         run: |
-          comm -23 <(sort collaborators.txt) <(sort committers.txt) > non_committers.txt
+          comm -23 <(sort filtered_collaborators.txt) <(sort committers.txt) > non_committers.txt
+          echo "Non-committers identified: $(cat non_committers.txt)"
 
       - name: Install and Configure msmtp
         run: |
@@ -58,44 +58,52 @@ jobs:
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
-          account hostinger
+          account email
           host smtp.hostinger.com
           port 465
           user "${{ secrets.EMAIL_USERNAME }}"
           password "${{ secrets.EMAIL_PASSWORD }}"
           from "${{ secrets.EMAIL_USERNAME }}"
-          account default : hostinger
+          account default : email
           EOF
           chmod 600 ~/.msmtprc
 
+      - name: Determine Time-Based Email Action
+        run: |
+          HOUR=$(date -u +"%H")
+          if [ "$HOUR" -eq 19 ]; then
+            echo "REMINDER=true" >> $GITHUB_ENV
+          elif [ "$HOUR" -eq 9 ]; then
+            echo "FOLLOW_UP=true" >> $GITHUB_ENV
+          fi
+
       - name: Send 7 PM Reminder to Non-Committers
-        if: github.event.schedule == '0 19 * * *'
+        if: env.REMINDER == 'true'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
             EMAIL_TO="pratham.chatke@thedatatechlabs.com"  
-            echo -e "Subject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\nIf there’s any issue preventing you from committing, let me know immediately.\nLooking forward to your update.!\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            echo -e "Subject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\n\nIf there’s any issue preventing you from committing, let me know immediately.\n\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
           done < non_committers.txt
 
-      - name: Send Next Morning Follow-up to Non-Committers
-        if: github.event.schedule == '0 9 * * *'
+      - name: Send 9 AM Follow-up Email to Non-Committers
+        if: env.FOLLOW_UP == 'true'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
             EMAIL_TO="pratham.chatke@thedatatechlabs.com"  
-            echo -e "Subject: 🚨 Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations. Immediate action is required—ensure your contributions are updated without further delay.\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly. \nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            echo -e "Subject: 🚨 Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations. Immediate action is required—ensure your contributions are updated without further delay.\n\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly. \n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp "$EMAIL_TO"
           done < non_committers.txt
-          
+
       - name: Send Summary Email to Admins
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           RECIPIENTS="nikhil.pawar@tdtl.world,imran.mulla@tdtl.world,vrushabh.bhuse@tdtl.world"
-          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
+          NON_COMMITTED_LIST=$(paste -sd ", " non_committers.txt)
           
-          echo -e "Subject: 📊 Daily Commit Report\n\nDespite the reminder sent yesterday, ${user} has not committed any updates to the repository. This is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken.\n$NON_COMMITTED_LIST" | \
-          msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" $(echo $RECIPIENTS | tr ',' ' ')
+          echo -e "Subject: 📊 Daily Commit Report\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken." | \
+          msmtp $(echo $RECIPIENTS | tr ',' ' ')
 
-     
