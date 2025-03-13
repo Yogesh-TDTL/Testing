@@ -21,27 +21,22 @@ jobs:
           echo "Fetching Collaborators..."
           curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/collaborators" | \
-               jq -r '.[].login' > collaborators.txt
+               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' > collaborators.txt
 
-          # Define managers to exclude
-          MANAGERS=("manager1" "manager2" "manager3")  # Replace with actual usernames
+          echo "All Collaborators:"
+          cat collaborators.txt  # Debugging step
 
-          # Remove managers from collaborators
-          awk 'NR==FNR{exclude[$0];next} !($0 in exclude)' <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > filtered_collaborators.txt
+          # Define managers to exclude (Replace with actual usernames)
+          MANAGERS=("manager1" "manager2" "manager3")
 
-      - name: Fetch Last 24 Hours Committers
-        id: committers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SINCE=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
-          echo "Fetching committers since $SINCE..."
-          
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=$SINCE" | \
-               jq -r '.[].author.login' | sort -u > committers.txt
+          # Save managers to a file
+          printf "%s\n" "${MANAGERS[@]}" > managers.txt
+
+          # Remove managers from collaborators list
+          grep -v -F -x -f managers.txt collaborators.txt > filtered_collaborators.txt
+
+          echo "Filtered Collaborators (without managers):"
+          cat filtered_collaborators.txt  # Debugging step
 
       - name: Find Non-Committers
         id: non_committers
