@@ -2,6 +2,8 @@ name: New
 
 on:
   workflow_dispatch:  # Allows manual execution
+  schedule:
+    - cron: '*/5 * * * *'  # Runs every 5 minutes
 
 jobs:
   list-collaborators-and-notify:
@@ -22,7 +24,6 @@ jobs:
           echo "All Collaborators:"
           echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
-
 
       - name: Find Collaborators Who Did Not Commit Today
         id: non_committers
@@ -65,7 +66,6 @@ jobs:
           echo "Sending email to $RECIPIENT..."
           echo -e "Subject: Reminder - No Commit Today!\n\nHello,\n\nThe following users haven't committed to the repository today:\n$(cat user_emails.txt)\n\nBest,\nDevOps Team" \
             | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT"
-
 
       - name: Send Summary Email to Admin
         env:
