@@ -112,7 +112,3 @@ jobs:
                 --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" \
                 "$RECIPIENT_EMAIL"
 
-          NON_COMMITTED_LIST=$(paste -sd ", " non_committers.txt)
-          
-          echo -e "Subject: 📊 Daily Commit Report\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken." | \
-          msmtp $(echo $RECIPIENTS | tr ',' ' ')
