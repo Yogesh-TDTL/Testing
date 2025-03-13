@@ -3,8 +3,8 @@ name: Notify Non-Committers via Mail
 on:
   workflow_dispatch:
   schedule:
-    - cron: "3 * * * 1-5"  # 7 PM UTC (Monday - Friday)
-    - cron: "0 9 * * 1-5"   # 9 AM UTC (Monday - Friday)
+    - cron: "5 * * * 1-5"  # 7 PM UTC (Monday - Friday)
+    - cron: "5 * * * 1-5"   # 9 AM UTC (Monday - Friday)
 
 jobs:
   list-collaborators-and-notify:
