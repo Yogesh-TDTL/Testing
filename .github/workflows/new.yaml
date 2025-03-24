@@ -23,6 +23,19 @@ jobs:
           echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
 
+      - name: Fetch Today's Committers
+        id: committers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(date -u +"%Y-%m-%dT")
+          echo "Fetching Users who committed today..."
+          
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
+          echo "$COMMITTERS" > committers.txt
+
       - name: Find Collaborators Who Did Not Commit Today
         id: non_committers
         run: |
@@ -62,9 +75,8 @@ jobs:
         run: |
           RECIPIENT="pratham.chatke@thedatatechlabs.com"
           echo "Sending email to $RECIPIENT..."
-          echo -e "Subject: Reminder - No Commit Today!\n\nHello,\n\nThe following users haven't committed to the repository today:\n$(cat user_emails.txt)\n\nBest,\nDevOps Team" \
+          echo -e "Subject: Reminder - No Commit Today!\n\nHello,\n\nThe following users haven't committed to the repository today:\n$(cat non_committers.txt)\n\nBest,\nDevOps Team" \
             | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT"
-
 
       - name: Send Summary Email to Admin
         env:
@@ -72,5 +84,6 @@ jobs:
         run: |
           RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
-           echo -e "Subject: Daily Commit Report\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken." | \
-          msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" $(echo $RECIPIENTS | tr ',' ' ')
+          
+          echo -e "Subject: Daily Commit Report\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken." | \
+          msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
