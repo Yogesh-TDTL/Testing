@@ -75,6 +75,8 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
+          export LANG=en_US.UTF-8
+          export LC_ALL=en_US.UTF-8
           RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
-          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
-          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: ⚠️ Daily Commit Report - Non-Committers Alert\n\nHello Team,\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken.\n\nBest Regards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
+          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ' | iconv -f UTF-8 -t UTF-8)
+          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: ⚠️ Daily Commit Report - Non-Committers Alert\n\nHello Team,\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken.\n\nBest Regards,\nCloud Team" | iconv -f UTF-8 -t UTF-8 | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
