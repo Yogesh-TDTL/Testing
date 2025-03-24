@@ -59,7 +59,7 @@ jobs:
         run: |
           while IFS= read -r user; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"  
-            echo -e "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\nIf there’s any issue preventing you from committing, let me know immediately.\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\nIf there’s any issue preventing you from committing, let me know immediately.\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
       - name: Send Next Morning Follow-up to Non-Committers (Test)
