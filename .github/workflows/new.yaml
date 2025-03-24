@@ -2,8 +2,6 @@ name: New
 
 on:
   workflow_dispatch:  # Allows manual execution
-  schedule:
-    - cron: '*/5 * * * *'  # Runs every 5 minutes
 
 jobs:
   list-collaborators-and-notify:
