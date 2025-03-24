@@ -79,7 +79,7 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          RECIPIENTS="imran.mulla@tdtl.world"
+          RECIPIENTS="yogesh.more@thedatatechlabs.com"
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
           
           echo -e "Subject: Daily Commit Report\n\nDespite the reminder sent yesterday, ${user} has not committed any updates to the repository. This is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken.\n$NON_COMMITTED_LIST" | \
