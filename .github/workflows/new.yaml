@@ -58,7 +58,7 @@ jobs:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
-            EMAIL_TO="yogeshmore@thedatatechlabs.com"  
+            EMAIL_TO="yogesh.more@thedatatechlabs.com"  
             echo -e "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\nIf there’s any issue preventing you from committing, let me know immediately.\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
@@ -67,7 +67,7 @@ jobs:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           while IFS= read -r user; do
-            EMAIL_TO="yogeshmore@thedatatechlabs.com"  
+            EMAIL_TO="yogesh.more@thedatatechlabs.com"  
             echo -e "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations. Immediate action is required—ensure your contributions are updated without further delay.\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly. \nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
           done < non_committers.txt
 
@@ -75,6 +75,6 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          RECIPIENT_EMAIL="yogeshmore@thedatatechlabs.com"
+          RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
           NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
           echo -e "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: ⚠️ Daily Commit Report - Non-Committers Alert\n\nHello Team,\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken.\n\nBest Regards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
