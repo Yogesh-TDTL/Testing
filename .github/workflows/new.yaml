@@ -1,4 +1,4 @@
-name: Notify Non-Committers via Mail - Test Mode
+name: Notify Non-Committers via Mail
 
 on:
   workflow_dispatch:
@@ -22,8 +22,7 @@ jobs:
           curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | sort -u > collaborators.txt
-          echo "Collaborators Fetched:"
-          cat collaborators.txt
+          echo "Collaborators Fetched:" && cat collaborators.txt
 
       - name: Fetch Today's Committers
         id: committers
@@ -31,45 +30,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching Committers..."
+          echo "Fetching Users who committed today..."
           curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u > committers.txt
-          echo "Committers Today:"
-          cat committers.txt
+          echo "Committers Today:" && cat committers.txt
 
       - name: Find Non-Committers
         id: non_committers
         run: |
-          comm -23 <(sort -u collaborators.txt) <(sort -u committers.txt) > non_committers.txt
+          comm -23 <(sort collaborators.txt) <(sort committers.txt) > non_committers.txt
           echo "Non-Committers:" && cat non_committers.txt
-
-      - name: Install and Configure msmtp
-        run: |
-          sudo apt-get update && sudo apt-get install -y msmtp
-          cat <<EOF > ~/.msmtprc
-          defaults
-          auth           login
-          tls            on
-          tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
-          account hostinger
-          host smtp.hostinger.com
-          port 465
-          user "${{ secrets.EMAIL_USERNAME }}"
-          password "${{ secrets.EMAIL_PASSWORD }}"
-          from "${{ secrets.EMAIL_USERNAME }}"
-          account default : hostinger
-          EOF
-          chmod 600 ~/.msmtprc
-
-      - name: Send Test Email (Manual Trigger Only)
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          EMAIL_TO="prathmesh.chikhale@tdtl.world"
-          printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: 📩 Test Email for Notification Workflow\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n\nHello,\n\nThis is a test email to verify the email format before running the full workflow.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
 
       - name: Send 7 PM Reminder to Non-Committers
         env:
@@ -77,6 +48,22 @@ jobs:
         run: |
           while IFS= read -r user; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            echo "Sending reminder to $user" >> email_log.txt
-            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nPlease ensure you push your updates today.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\n\nIf there’s any issue preventing you from committing, let me know immediately.\n\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
           done < non_committers.txt
+
+      - name: Send Next Morning Follow-up to Non-Committers
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          while IFS= read -r user; do
+            EMAIL_TO="yogesh.more@thedatatechlabs.com"
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: 🚨 Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations.\n\nImmediate action is required—ensure your contributions are updated without further delay.\n\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly.\n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp "$EMAIL_TO"
+          done < non_committers.txt
+
+      - name: Send Summary Email to Admins
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
+          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ' | iconv -f UTF-8 -t UTF-8//IGNORE)
+          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: Daily Commit Report - Non-Committers Alert\n\nHello Team,\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken.\n\nBest Regards,\nCloud Team" | msmtp "$RECIPIENT_EMAIL"
