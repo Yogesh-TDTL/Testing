@@ -41,7 +41,25 @@ jobs:
         run: |
           comm -23 <(sort collaborators.txt) <(sort committers.txt) > non_committers.txt
           echo "Non-Committers:" && cat non_committers.txt
-
+          
+      - name: Install and Configure msmtp
+        run: |
+          sudo apt-get update && sudo apt-get install -y msmtp
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           login
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          account hostinger
+          host smtp.hostinger.com
+          port 465
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          account default : hostinger
+          EOF
+          chmod 600 ~/.msmtprc
       - name: Send 7 PM Reminder to Non-Committers
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
