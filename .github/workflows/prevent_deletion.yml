@@ -70,7 +70,7 @@ jobs:
           chmod 600 ~/.msmtprc
           
       - name: Send 7 PM Reminder to Non-Committers
-        if: github.event.schedule == '0 9 * * *'
+        if: github.event.schedule == "30 13 * * 1-5"
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
@@ -82,7 +82,7 @@ jobs:
           done < non_committers.txt
           
       - name: Send Next Morning Follow-up to Non-Committers
-        if: github.event.schedule == '0 9 * * *'
+        if: github.event.schedule == "30 3 * * 1-5" 
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
