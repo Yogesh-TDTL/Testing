@@ -23,35 +23,17 @@ jobs:
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                               -H "Accept: application/vnd.github.v3+json" \
                               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-          
+          echo "All Collaborators:"
+          echo "$COLLABORATORS"
           echo "$COLLABORATORS" > collaborators.txt
-          
-          # Define managers to exclude
-          MANAGERS=("ImranTDTL")  # Replace with actual usernames
-          # Remove managers from collaborators
-          grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
-          
-      - name: Fetch Today's Committers
-        id: committers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TODAY=$(date -u -d "yesterday" +"%Y-%m-%dT%H:%M:%SZ")
-          echo "Fetching Users who committed since $TODAY..."
-          
-          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                             -H "Accept: application/vnd.github.v3+json" \
-                             "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
-
-          echo "$COMMITTERS" > committers.txt
-          
-      - name: Find Non-Committers
+      - name: Find Collaborators Who Did Not Commit Today
         id: non_committers
         run: |
-          awk 'NF' collaborators.txt | sort -u > collaborators_clean.txt
-          awk 'NF' committers.txt | sort -u > committers_clean.txt
-          comm -23 collaborators_clean.txt committers_clean.txt > non_committers.txt
-
+          echo "Finding Collaborators who did NOT commit today..."
+          NOT_COMMITTED=$(comm -23 <(sort collaborators.txt) <(sort committers.txt))
+          echo "Users who did NOT commit today:"
+          echo "$NOT_COMMITTED"
+          echo "$NOT_COMMITTED" > non_committers.txt
 
       - name: Install and Configure msmtp
         run: |
