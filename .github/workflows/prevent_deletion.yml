@@ -1,67 +1,99 @@
-name: Alert Admin on File Deletion
+name: Notify Non-Committers via Mail
 
 on:
-  push:
-    branches:
-      - main
-      - frontend
-      - backend
+  workflow_dispatch:
+  schedule:
+    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC)
+    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC) 
 
 jobs:
-  check_deletion:
+  list-collaborators-and-notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2  # Ensure we get the previous commit
+
+      - name: Fetch Collaborators
+        id: collaborators
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching Collaborators..."
+          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
           
+          echo "$COLLABORATORS" > collaborators.txt
+          
+          # Define managers to exclude
+          MANAGERS=("ImranTDTL")  # Replace with actual usernames
+          # Remove managers from collaborators
+          grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
+          
+      - name: Fetch Today's Committers
+        id: committers
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(date -u -d "yesterday" +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Fetching Users who committed since $TODAY..."
+          
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
+          echo "$COMMITTERS" > committers.txt
+          
+      - name: Find Non-Committers
+        id: non_committers
+        run: |
+          awk 'NF' collaborators.txt | sort -u > collaborators_clean.txt
+          awk 'NF' committers.txt | sort -u > committers_clean.txt
+          comm -23 collaborators_clean.txt committers_clean.txt > non_committers.txt
+      
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
-          echo "Creating msmtp config file..."
           cat <<EOF > ~/.msmtprc
           defaults
-          auth           on
+          auth           login
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
-          timeout        10
           account hostinger
           host smtp.hostinger.com
-          port 587  # ✅ Use 587 instead of 465
+          port 465
           user "${{ secrets.EMAIL_USERNAME }}"
-          passwordeval 'echo "${{ secrets.EMAIL_PASSWORD }}"'
+          password "${{ secrets.EMAIL_PASSWORD }}"
           from "${{ secrets.EMAIL_USERNAME }}"
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
-          
-      - name: Check for Deleted Files
-        id: check_deletions
-        run: |
-          previous_commit=$(git rev-parse HEAD^ 2>/dev/null || echo "")
-          if [ -n "$previous_commit" ]; then
-            deleted_files=$(git diff --diff-filter=D --name-only $previous_commit HEAD)
-          else
-            deleted_files=""
-          fi
-          if [ -n "$deleted_files" ]; then
-            echo "File deletion detected! Sending email alert."
-            echo "deleted=true" >> $GITHUB_ENV
-            echo "DELETED_FILES=$deleted_files" >> $GITHUB_ENV
-          else
-            echo "No files deleted."
-            echo "deleted=false" >> $GITHUB_ENV
-          fi
-
-      - name: Send Email Notification to Admin
-        if: env.deleted == 'true'
+      - name: Send 7 PM Reminder to Non-Committers
+        if: github.event.schedule == '0 19 * * *'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          ADMIN_EMAIL="yogesh.more@thedatatechlabs.com"
-          echo "Sending email alert to admin ($ADMIN_EMAIL)..."
-
-          echo -e "Subject: ⚠️ Alert - File Deletion in Repository!\n\nHello Admin,\n\nThe following files were deleted:\n\n${{ env.DELETED_FILES }}\n\nPlease review the changes.\n\nBest,\nDevOps Team" \
-            | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval 'echo "${{ secrets.EMAIL_PASSWORD }}"' "$ADMIN_EMAIL"
+          while IFS= read -r user; do
+            EMAIL_TO="devendra.midgule@tdtl.world"  
+            echo -e "Subject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\nIf there’s any issue preventing you from committing, let me know immediately.\nLooking forward to your update.!\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < non_committers.txt
+      - name: Send Next Morning Follow-up to Non-Committers
+        if: github.event.schedule == '0 9 * * *'
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          while IFS= read -r user; do
+            EMAIL_TO="devendra.midgule@tdtl.world"  
+            echo -e "Subject: 🚨 Warning - No Commit Yesterday!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations. Immediate action is required—ensure your contributions are updated without further delay.\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly. \nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < non_committers.txt
+          
+      - name: Send Summary Email to Admins
+        env:
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+        run: |
+          RECIPIENTS="imran.mulla@tdtl.world"
+          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ')
+          
+          echo -e "Subject: 📊 Daily Commit Report\n\nDespite the reminder sent yesterday, ${user} has not committed any updates to the repository. This is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\nPlease advise on the next steps if no action is taken.\n$NON_COMMITTED_LIST" | \
+          msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" $(echo $RECIPIENTS | tr ',' ' ')
+     
