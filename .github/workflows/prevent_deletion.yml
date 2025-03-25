@@ -1,4 +1,4 @@
-name: Notify Non-Committers via Mail
+name: updated
 
 on:
   workflow_dispatch:
