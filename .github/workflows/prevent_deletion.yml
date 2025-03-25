@@ -3,8 +3,8 @@ name: updated
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC)
-    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC) 
+    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC) - Reminder Email
+    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC) - Warning Email & Report 
 
 jobs:
   list-collaborators-and-notify:
@@ -27,29 +27,55 @@ jobs:
           
           # Define managers to exclude
           MANAGERS=("ImranTDTL")  # Replace with actual usernames
-          # Remove managers from collaborators
           grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
           
-      - name: Fetch Today's Committers
-        id: committers
+      - name: Fetch Committers Before 7 PM
+        id: committers_7pm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TODAY=$(date -u -d "yesterday" +"%Y-%m-%dT%H:%M:%SZ")
-          echo "Fetching Users who committed since $TODAY..."
+          TODAY=$(date -u +"%Y-%m-%dT00:00:00Z")
+          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z")  # 7:30 PM IST in UTC
+          
+          echo "Fetching users who committed from $TODAY until $SEVEN_PM_UTC..."
           
           COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                              -H "Accept: application/vnd.github.v3+json" \
-                             "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
-          echo "$COMMITTERS" > committers.txt
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY&until=$SEVEN_PM_UTC" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
           
-      - name: Find Non-Committers
-        id: non_committers
+          echo "$COMMITTERS" > committers_7pm.txt
+          
+      - name: Find Non-Committers Before 7 PM
+        id: non_committers_7pm
         run: |
           awk 'NF' collaborators.txt | sort -u > collaborators_clean.txt
-          awk 'NF' committers.txt | sort -u > committers_clean.txt
-          comm -23 collaborators_clean.txt committers_clean.txt > non_committers.txt
-      
+          awk 'NF' committers_7pm.txt | sort -u > committers_clean.txt
+          comm -23 collaborators_clean.txt committers_clean.txt > non_committers_7pm.txt
+
+      - name: Fetch Committers After 7 PM (For Next Day 9 AM Warning)
+        if: github.event.schedule == '30 3 * * 1-5'
+        id: committers_after_7pm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z")
+          NOW_UTC=$(date -u +"%Y-%m-%dT03:30:00Z")  # 9:30 AM IST in UTC
+          
+          echo "Fetching users who committed from $SEVEN_PM_UTC until $NOW_UTC..."
+          
+          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                             -H "Accept: application/vnd.github.v3+json" \
+                             "https://api.github.com/repos/${{ github.repository }}/commits?since=$SEVEN_PM_UTC&until=$NOW_UTC" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
+          
+          echo "$COMMITTERS" > committers_after_7pm.txt
+
+      - name: Find Still Non-Committers After 7 PM (For 9 AM Email & Report)
+        if: github.event.schedule == '30 3 * * 1-5'
+        id: final_non_committers
+        run: |
+          awk 'NF' committers_after_7pm.txt | sort -u > committers_after_7pm_clean.txt
+          comm -23 non_committers_7pm.txt committers_after_7pm_clean.txt > final_non_committers.txt
+
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
@@ -68,9 +94,9 @@ jobs:
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
-          
+
       - name: Send 7 PM Reminder to Non-Committers
-        if: github.event.schedule == '30 13 * * 1-5'
+        if: github.event.schedule == '30 13 * * 1-5' && success() && hashFiles('non_committers_7pm.txt') != ''
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
@@ -78,11 +104,11 @@ jobs:
           export LC_ALL=en_US.UTF-8
           while IFS= read -r user; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n\nHello ${user},\n\nThis is a reminder that as of now, no commit has been recorded from your end in the repository today. Please ensure that you push your updates before the end of the day to stay aligned with our workflow.\n\nIf there’s any issue preventing you from committing, let me know immediately.\n\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
-          done < non_committers.txt
-          
-      - name: Send Next Morning Follow-up to Non-Committers
-        if: github.event.schedule == '30 3 * * 1-5' 
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < non_committers_7pm.txt
+
+      - name: Send 9 AM Warning Email to Non-Committers
+        if: github.event.schedule == '30 3 * * 1-5' && success() && hashFiles('final_non_committers.txt') != ''
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
@@ -90,18 +116,15 @@ jobs:
           export LC_ALL=en_US.UTF-8
           while IFS= read -r user; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: 🚨 Warning - No Commit Yesterday!\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations.\n\nImmediate action is required—ensure your contributions are updated without further delay.\n\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly.\n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
-          done < non_committers.txt
-      
-      - name: Send Summary Email to Admins
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: 🚨 Urgent: No Commit Yesterday!\n\nHello ${user},\n\nYou didn't commit yesterday, despite a reminder. Please take immediate action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+          done < final_non_committers.txt
+
+      - name: Send Summary Report to Admin at 9 AM
+        if: github.event.schedule == '30 3 * * 1-5' && success()
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          export LANG=en_US.UTF-8
-          export LC_ALL=en_US.UTF-8
           RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
-          # Convert non-committed list to UTF-8 safe format
-          NON_COMMITTED_LIST=$(cat non_committers.txt | tr '\n' ', ' | iconv -f UTF-8 -t UTF-8//IGNORE)
-          # Use proper MIME headers for UTF-8 emails
-          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: Daily Commit Report - Non-Committers Alert\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n\nHello Team,\n\nDespite the reminder sent yesterday, the following users have not committed any updates to the repository:\n\n$NON_COMMITTED_LIST\n\nThis is a breach of our workflow requirements. I have sent a follow-up email instructing immediate action.\n\nPlease advise on the next steps if no action is taken.\n\nBest Regards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
-           
+          NON_COMMITTED_LIST=$(cat final_non_committers.txt | tr '\n' ', ')
+          
+          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: 📝 Daily Commit Report - Non-Committers\n\nHello Team,\n\nThese users did not commit anything yesterday:\n\n$NON_COMMITTED_LIST\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
