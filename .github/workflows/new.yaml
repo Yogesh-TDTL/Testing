@@ -30,22 +30,27 @@ jobs:
           MANAGERS=("ImranTDTL")  # Replace with actual usernames
           # Remove managers from collaborators
           grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
-      - name: Fetch Today's Committers
-        id: committers
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TODAY=$(date -u +"%Y-%m-%dT")
-          echo "Fetching Users who committed today..."
+           - name: Fetch Today's Committers
+          id: committers
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            TODAY=$(date -u -d "yesterday" +"%Y-%m-%dT%H:%M:%SZ")
+            echo "Fetching Users who committed since $TODAY..."
+            
+            COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                               -H "Accept: application/vnd.github.v3+json" \
+                               "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY" | jq -r '.[] | select(.author != null) | .author.login' | sort -u)
+  
+            echo "$COMMITTERS" > committers.txt
           
-          COMMITTERS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                             -H "Accept: application/vnd.github.v3+json" \
-                             "https://api.github.com/repos/${{ github.repository }}/commits?since=${TODAY}00:00:00Z" | jq -r '.[].author.login' | sort -u)
-          echo "$COMMITTERS" > committers.txt
       - name: Find Non-Committers
         id: non_committers
         run: |
-          comm -23 <(sort collaborators.txt) <(sort committers.txt) > non_committers.txt
+          awk 'NF' collaborators.txt | sort -u > collaborators_clean.txt
+          awk 'NF' committers.txt | sort -u > committers_clean.txt
+          comm -23 collaborators_clean.txt committers_clean.txt > non_committers.txt
+
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
