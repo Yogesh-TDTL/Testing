@@ -3,9 +3,7 @@ name: updated
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC) - Reminder Email
-    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC) - Warning Email & Report 
-
+      - cron: "*/5 * * * *"  # Runs every 5 minutes
 jobs:
   list-collaborators-and-notify:
     runs-on: ubuntu-latest
@@ -53,7 +51,7 @@ jobs:
           comm -23 collaborators_clean.txt committers_clean.txt > non_committers_7pm.txt
 
       - name: Fetch Committers After 7 PM (For Next Day 9 AM Warning)
-        if: github.event.schedule == '30 3 * * 1-5'
+        if: github.event.schedule == '*/5 * * * *'
         id: committers_after_7pm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,7 +68,7 @@ jobs:
           echo "$COMMITTERS" > committers_after_7pm.txt
 
       - name: Find Still Non-Committers After 7 PM (For 9 AM Email & Report)
-        if: github.event.schedule == '30 3 * * 1-5'
+        if: github.event.schedule == '*/5 * * * *'
         id: final_non_committers
         run: |
           awk 'NF' committers_after_7pm.txt | sort -u > committers_after_7pm_clean.txt
@@ -96,7 +94,7 @@ jobs:
           chmod 600 ~/.msmtprc
 
       - name: Send 7 PM Reminder to Non-Committers
-        if: github.event.schedule == '30 13 * * 1-5' && success() && hashFiles('non_committers_7pm.txt') != ''
+        if: github.event.schedule == '*/5 * * * *' && success() && hashFiles('non_committers_7pm.txt') != ''
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
@@ -108,7 +106,7 @@ jobs:
           done < non_committers_7pm.txt
 
       - name: Send 9 AM Warning Email to Non-Committers
-        if: github.event.schedule == '30 3 * * 1-5' && success() && hashFiles('final_non_committers.txt') != ''
+        if: github.event.schedule == '*/5 * * * *' && success() && hashFiles('final_non_committers.txt') != ''
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
@@ -120,7 +118,7 @@ jobs:
           done < final_non_committers.txt
 
       - name: Send Summary Report to Admin at 9 AM
-        if: github.event.schedule == '30 3 * * 1-5' && success()
+        if: github.event.schedule == '*/5 * * * *' && success()
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
