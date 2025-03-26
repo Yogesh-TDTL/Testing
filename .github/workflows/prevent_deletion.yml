@@ -1,59 +1,58 @@
-name: Test Email Notification
+name: Test Commit Check and Email Notification
 
 on:
-  workflow_dispatch:  # Allows manual triggering
   schedule:
-    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC)
-    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC)
+    - cron: "*/5 * * * *"  # Runs every 5 minutes
+  workflow_dispatch:  # Allows manual trigger
 
 jobs:
-  send-test-emails:
+  check-commits:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
       EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
       EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-      SMTP_SERVER: "smtp.hostinger.com"
-      SMTP_PORT: "587"
-      DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
-      MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
-
     steps:
-      - name: Debug Email Variables
+      - name: Check for Commits in Last 5 Minutes
+        id: check_commits
         run: |
-          echo "Developer Email: $DEVELOPER_EMAIL"
-          echo "Manager Email: $MANAGER_EMAIL"
-
-          if [[ -z "$DEVELOPER_EMAIL" || -z "$MANAGER_EMAIL" ]]; then
-            echo "Error: One or more email addresses are missing. Exiting."
-            exit 1
+          FIVE_MIN_AGO=$(date -u -d "5 minutes ago" +"%Y-%m-%dT%H:%M:%SZ")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          echo "Checking commits from $FIVE_MIN_AGO to $NOW..."
+          
+          COMMIT_COUNT=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/commits?since=$FIVE_MIN_AGO&until=$NOW" \
+            | jq 'length')
+          
+          echo "Commits found: $COMMIT_COUNT"
+          
+          if [ "$COMMIT_COUNT" -eq 0 ]; then
+            echo "NO_COMMIT=true" >> $GITHUB_ENV
+          else
+            echo "NO_COMMIT=false" >> $GITHUB_ENV
           fi
-
-      - name: Install and Configure msmtp
+      
+      - name: Send Email if No Commit
+        if: env.NO_COMMIT == 'true'
         run: |
+          echo "No commits found. Sending email to developer."
           sudo apt-get update && sudo apt-get install -y msmtp
+          
           cat <<EOF > ~/.msmtprc
           defaults
           auth           login
           tls            on
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
           account hostinger
-          host $SMTP_SERVER
-          port $SMTP_PORT
-          user $EMAIL_USERNAME
-          password $EMAIL_PASSWORD
-          from $EMAIL_USERNAME
+          host smtp.hostinger.com
+          port 465
+          user "${EMAIL_USERNAME}"
+          password "${EMAIL_PASSWORD}"
+          from "${EMAIL_USERNAME}"
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
-
-      - name: Send Test Email to Developer
-        run: |
-          echo "Sending test email to Developer: $DEVELOPER_EMAIL"
-          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: 🛠 Test Email\n\nHello,\n\nThis is a test email to confirm email delivery.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=$SMTP_SERVER --port=$SMTP_PORT --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo $EMAIL_PASSWORD" "$DEVELOPER_EMAIL"
-
-      - name: Send Test Email to Manager
-        run: |
-          echo "Sending test email to Manager: $MANAGER_EMAIL"
-          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: 🛠 Test Email\n\nHello,\n\nThis is a test email to confirm email delivery.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=$SMTP_SERVER --port=$SMTP_PORT --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo $EMAIL_PASSWORD" "$MANAGER_EMAIL"
+          
+          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: No Commit in Last 5 Minutes\n\nNo commit has been made in the last 5 minutes. Please check." | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=465 --auth=on --tls=on --user=$EMAIL_USERNAME --password=$EMAIL_PASSWORD "$DEVELOPER_EMAIL"
