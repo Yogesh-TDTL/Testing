@@ -41,7 +41,7 @@ jobs:
         run: |
           # Define user to check (hardcoded)
           NON_COMMITTED_USER="Pratham-TDTL"
-          EMAIL_TO="pratham@example.com"
+          EMAIL_TO="yogesh.more@thedatatechlabs.com"
 
           echo "Checking commits for: $NON_COMMITTED_USER"
           
