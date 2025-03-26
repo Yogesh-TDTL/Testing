@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MANAGER_USERNAME: "ImranTDTL"
+      MANAGER_USERNAME: "Yogesh-TDTL"
       DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
       MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
     steps:
