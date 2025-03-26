@@ -15,7 +15,7 @@ jobs:
       - name: List Collaborators and Check Recent Commit Activity
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANAGER_USERNAME: "manager-username"  # Replace with actual manager's GitHub username
+          MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
         run: |
           echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
