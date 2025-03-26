@@ -15,20 +15,28 @@ jobs:
       - name: List Collaborators and Check Recent Commit Activity
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
+          MANAGER_USERNAME: "manager-username"  # Replace with actual manager's GitHub username
         run: |
+          echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
                "https://api.github.com/repos/${{ github.repository }}/collaborators" \
                | jq -r '.[].login')
           
-          echo "Recent Committers (Last Hour):"
+          echo "Collaborators List:"
+          echo "$COLLABORATORS"
+          
+          echo "\nRecent Committers (Last Hour):"
           COMMITTED=false
+          NON_COMMITTED_USERS=""
+          COMMITTED_USERS=""
+          
           for user in $COLLABORATORS; do
             if [ "$user" = "$MANAGER_USERNAME" ]; then
               continue  # Skip manager
             fi
             
+            echo "Checking commits for: $user"
             RECENT_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                  -H "Accept: application/vnd.github.v3+json" \
                  "https://api.github.com/repos/${{ github.repository }}/commits?author=$user&since=$(date -u -d '1 hour ago' +"%Y-%m-%dT%H:%M:%SZ")" \
