@@ -37,9 +37,6 @@ jobs:
           MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
         run: |
-          export LANG=en_US.UTF-8
-          export LC_ALL=en_US.UTF-8
-          
           echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                -H "Accept: application/vnd.github.v3+json" \
@@ -77,7 +74,7 @@ jobs:
           echo -e "$NON_COMMITTED_USERS" | while IFS= read -r user; do
             if [[ -n "$user" ]]; then
               EMAIL_TO="yogesh.more@thedatatechlabs.com"
-              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
               echo "Email sent to: $EMAIL_TO"
             fi
           done
