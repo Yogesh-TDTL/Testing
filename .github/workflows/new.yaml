@@ -1,4 +1,4 @@
-name: Check Recent Committers
+name: Check Recent Committers and Notify Non-Committers
 
 on:
   schedule:
@@ -11,6 +11,25 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+      
+      - name: Install and Configure msmtp
+        run: |
+          sudo apt-get update && sudo apt-get install -y msmtp
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           login
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          account hostinger
+          host smtp.hostinger.com
+          port 465
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          account default : hostinger
+          EOF
+          chmod 600 ~/.msmtprc
       
       - name: List Collaborators and Check Recent Commit Activity
         env:
@@ -29,7 +48,6 @@ jobs:
           echo "\nRecent Committers (Last Hour):"
           COMMITTED=false
           NON_COMMITTED_USERS=""
-          COMMITTED_USERS=""
           
           for user in $COLLABORATORS; do
             if [ "$user" = "$MANAGER_USERNAME" ]; then
@@ -44,16 +62,17 @@ jobs:
             
             if [ "$RECENT_COMMITS" -gt 0 ]; then
               echo "$user committed in the last hour ($RECENT_COMMITS commits)"
-              COMMITTED_USERS+="$user\n"
-              COMMITTED=true
             else
               NON_COMMITTED_USERS+="$user\n"
             fi
           done
           
-          if [ "$COMMITTED" = false ]; then
-            echo "No one has committed in the last hour."
-          fi
-          
           echo "\nNon-Committers (Last Hour):"
           echo -e "$NON_COMMITTED_USERS"
+          
+          echo "Sending Reminder Emails..."
+          for user in $NON_COMMITTED_USERS; do
+            email="$yogesh.more@thedatatechlabs.com"  # Replace this logic to fetch actual emails
+            echo -e "Subject: Reminder to Commit\n\nHello $user,\n\nYou haven't committed in the last hour. Please make sure to contribute." | msmtp -a default "$email"
+            echo "Email sent to: $email"
+          done
