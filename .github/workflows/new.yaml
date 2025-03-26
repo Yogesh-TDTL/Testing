@@ -86,7 +86,7 @@ jobs:
           echo -e "$NON_COMMITTED_USERS" | while IFS= read -r user; do
             if [[ -n "$user" ]]; then
               EMAIL_TO="yogesh.more@thedatatechlabs.com"
-              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: WARNING - No Commit Detected!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations.\n\nImmediate action is required—ensure your contributions are updated without further delay.\n\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly.\n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: WARNING - No Commit Detected!\n\nHello ${user},\n\nI have reviewed today's repository activity and noticed that you have not committed any updates. This is unacceptable and goes against our workflow expectations.\n\nImmediate action is required ensure your contributions are updated without further delay.\n\nLet me know if there is any issue preventing you from completing your work. I expect this to be resolved promptly.\n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
               echo "Warning email sent to: $EMAIL_TO"
             fi
           done
