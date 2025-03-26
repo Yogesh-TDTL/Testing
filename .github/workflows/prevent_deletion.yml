@@ -1,70 +1,55 @@
-name: updated
-
+name: Test Notify Non-Committers via Mail
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"  # Test Mode (Replace with 0 13 * * * for 7 PM Reminder)
-    - cron: "*/10 * * * *"  # Test Mode (Replace with 0 3 * * * for 9 AM Report)
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  list-collaborators-and-notify:
+  check-commits:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MANAGER_USERNAME: "ImranTDTL"
+      DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
+      MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
+    steps:
+      - name: Fetch Collaborators (Excluding Manager)
+        id: fetch_collaborators
+        run: |
+          echo "Fetching repository collaborators..."
+          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
+
+          # Remove manager from list
+          DEVELOPERS=$(echo "$COLLABORATORS" | grep -v -w "$MANAGER_USERNAME" || true)
+          echo "Final developer list (excluding manager): $DEVELOPERS"
+          echo "$DEVELOPERS" > developers.txt
+
+      - name: Fetch Commits in Last Hour (For Testing)
+        id: check_commits
+        run: |
+          ONE_HOUR_AGO=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%SZ")
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "Checking commits from $ONE_HOUR_AGO to $NOW..."
+
+          HAS_COMMITTED="false"
+          while IFS= read -r DEV; do
+            COMMIT_COUNT=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                            "https://api.github.com/repos/${{ github.repository }}/commits?since=$ONE_HOUR_AGO&until=$NOW&author=$DEV" \
+                            | jq 'length')
+
+            if [ "$COMMIT_COUNT" -gt 0 ]; then
+              echo "$DEV has committed."
+              HAS_COMMITTED="true"
+            fi
+          done < developers.txt
+
+          echo "HAS_COMMITTED=$HAS_COMMITTED" >> $GITHUB_ENV
+
+  send-emails:
+    needs: check-commits
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Fetch Collaborators
-        id: collaborators
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Fetching Collaborators..."
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' > collaborators.txt
-          
-          MANAGERS=("ImranTDTL")
-          grep -vxF -f <(printf "%s\n" "${MANAGERS[@]}") collaborators.txt > temp.txt && mv temp.txt collaborators.txt
-
-      - name: Fetch Committers Before 7 PM
-        id: committers_7pm
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z") 
-          TODAY=$(date -u +"%Y-%m-%dT00:00:00Z")
-
-          echo "Fetching committers before 7 PM..."
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY&until=$SEVEN_PM_UTC" | jq -r '.[] | select(.author != null) | .author.login' | sort -u > committers_7pm.txt
-
-      - name: Find Non-Committers Before 7 PM
-        id: non_committers_7pm
-        run: |
-          awk 'NF' collaborators.txt | sort -u > collaborators_clean.txt
-          awk 'NF' committers_7pm.txt | sort -u > committers_clean.txt
-          comm -23 collaborators_clean.txt committers_clean.txt > non_committers_7pm.txt
-
-      - name: Fetch Committers After 7 PM
-        id: committers_after_7pm
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z")
-          NINE_AM_UTC=$(date -u +"%Y-%m-%dT03:30:00Z")
-
-          echo "Fetching committers after 7 PM..."
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
-               -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/commits?since=$SEVEN_PM_UTC&until=$NINE_AM_UTC" | jq -r '.[] | select(.author != null) | .author.login' | sort -u > committers_after_7pm.txt
-
-      - name: Find Final Non-Committers (For 9 AM Report)
-        id: final_non_committers
-        run: |
-          awk 'NF' committers_after_7pm.txt | sort -u > committers_after_7pm_clean.txt
-          comm -23 non_committers_7pm.txt committers_after_7pm_clean.txt > final_non_committers.txt
-
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
@@ -84,32 +69,16 @@ jobs:
           EOF
           chmod 600 ~/.msmtprc
 
-      - name: Send 7 PM Reminder
-        if: github.event.schedule == '*/5 * * * *' && success() && hashFiles('non_committers_7pm.txt') != ''
+      - name: Send Test Email if No Commit
+        if: env.HAS_COMMITTED == 'false'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          while IFS= read -r user; do
-            EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
-          done < non_committers_7pm.txt
+          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: ⚠️ Test Reminder - No Commit in Last Hour\n\nHello,\n\nThis is a test email. You haven't committed anything in the last hour.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$DEVELOPER_EMAIL"
 
-      - name: Send 9 AM Warning Email
-        if: github.event.schedule == '*/10 * * * *' && success() && hashFiles('final_non_committers.txt') != ''
+      - name: Send Test Summary Report to Manager
+        if: env.HAS_COMMITTED == 'false'
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
-          while IFS= read -r user; do
-            EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: 🚨 Urgent: No Commit Yesterday!\n\nHello ${user},\n\nYou didn't commit yesterday, despite a reminder. Please take immediate action.\n\nRegards,\nCloud Team" | msmtp "$EMAIL_TO"
-          done < final_non_committers.txt
-
-      - name: Send Summary Report to Admin
-        if: github.event.schedule == '*/10 * * * *' && success()
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          RECIPIENT_EMAIL="yogesh.more@thedatatechlabs.com"
-          NON_COMMITTED_LIST=$(cat final_non_committers.txt | tr '\n' ', ')
-          
-          printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: 📝 Daily Commit Report\n\nHello Team,\n\nThese users did not commit yesterday:\n\n$NON_COMMITTED_LIST\n\nRegards,\nCloud Team" | msmtp "$RECIPIENT_EMAIL"
+          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Test Daily Commit Report - Non-Committers\n\nHello,\n\nThis is a test report. The following developer did not commit in the last hour:\n\nDeveloper: falguni.jadhav\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
