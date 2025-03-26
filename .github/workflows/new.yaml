@@ -2,7 +2,7 @@ name: Check Recent Committers and Notify Non-Committers
 
 on:
   schedule:
-    - cron: "0 * * * *"  # Runs every hour
+    - cron: "0 0 * * *"  # Runs every day at midnight UTC
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
@@ -31,12 +31,12 @@ jobs:
           EOF
           chmod 600 ~/.msmtprc
       
-      - name: List Collaborators and Check Recent Commit Activity
+      - name: List Collaborators and Check Commit Activity
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
-          MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
+          RECIPIENT_EMAIL: "yogesh.more@thedatatechlabs.com"
         run: |
           echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
@@ -47,9 +47,8 @@ jobs:
           echo "Collaborators List:"
           echo "$COLLABORATORS"
           
-          echo "\nRecent Committers (Last Hour):"
-          NON_COMMITTED_USERS=""
-          REPORT="GitHub Commit Report - $(date)\n\n"
+          echo "\nChecking Commit Activity for the Last 24 Hours..."
+          NON_COMMITTED_LIST=""
 
           for user in $COLLABORATORS; do
             if [ "$user" = "$MANAGER_USERNAME" ]; then
@@ -59,28 +58,24 @@ jobs:
             echo "Checking commits for: $user"
             RECENT_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                  -H "Accept: application/vnd.github.v3+json" \
-                 "https://api.github.com/repos/${{ github.repository }}/commits?author=$user&since=$(date -u -d '1 hour ago' +"%Y-%m-%dT%H:%M:%SZ")" \
+                 "https://api.github.com/repos/${{ github.repository }}/commits?author=$user&since=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")" \
                  | jq length)
             
-            if [ "$RECENT_COMMITS" -gt 0 ]; then
-              REPORT+="✅ $user committed in the last hour ($RECENT_COMMITS commits)\n"
-            else
-              NON_COMMITTED_USERS+="$user\n"
-              REPORT+="⚠️ $user has not committed in the last hour\n"
+            if [ "$RECENT_COMMITS" -eq 0 ]; then
+              NON_COMMITTED_LIST+="$user\n"
+              EMAIL_TO="yogesh.more@thedatatechlabs.com"  # Modify email pattern if needed
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+              echo "Reminder email sent to: $EMAIL_TO"
             fi
           done
           
-          echo -e "$REPORT"
-
-          # Send reminder emails to non-committers
-          echo -e "$NON_COMMITTED_USERS" | while IFS= read -r user; do
-            if [[ -n "$user" ]]; then
-              EMAIL_TO="yogesh.more@thedatatechlabs.com"
-              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
-              echo "Email sent to: $EMAIL_TO"
-            fi
-          done
-
+          echo -e "\nNon-Committers (Last 24 Hours):"
+          echo -e "$NON_COMMITTED_LIST"
+          
           # Send report to manager
-          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Daily GitHub Commit Report - $(date)\n\n$REPORT" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
-          echo "Manager report sent to: $MANAGER_EMAIL"
+          if [[ -n "$NON_COMMITTED_LIST" ]]; then
+            printf "From: $EMAIL_USERNAME\nTo: $RECIPIENT_EMAIL\nSubject: Daily Commit Report - Non-Committers\n\nHello Team,\n\nThese users did not commit anything yesterday:\n\n$NON_COMMITTED_LIST\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$RECIPIENT_EMAIL"
+            echo "Manager report sent to: $RECIPIENT_EMAIL"
+          else
+            echo "All users committed. No report sent."
+          fi
