@@ -36,6 +36,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
+          MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
         run: |
           echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
@@ -48,6 +49,7 @@ jobs:
           
           echo "\nRecent Committers (Last Hour):"
           NON_COMMITTED_USERS=""
+          REPORT="GitHub Commit Report - $(date)\n\n"
 
           for user in $COLLABORATORS; do
             if [ "$user" = "$MANAGER_USERNAME" ]; then
@@ -61,16 +63,16 @@ jobs:
                  | jq length)
             
             if [ "$RECENT_COMMITS" -gt 0 ]; then
-              echo "$user committed in the last hour ($RECENT_COMMITS commits)"
+              REPORT+="✅ $user committed in the last hour ($RECENT_COMMITS commits)\n"
             else
               NON_COMMITTED_USERS+="$user\n"
+              REPORT+="⚠️ $user has not committed in the last hour\n"
             fi
           done
           
-          echo "\nNon-Committers (Last Hour):"
-          echo -e "$NON_COMMITTED_USERS"
-          
-          echo "Sending Reminder Emails..."
+          echo -e "$REPORT"
+
+          # Send reminder emails to non-committers
           echo -e "$NON_COMMITTED_USERS" | while IFS= read -r user; do
             if [[ -n "$user" ]]; then
               EMAIL_TO="yogesh.more@thedatatechlabs.com"
@@ -78,3 +80,7 @@ jobs:
               echo "Email sent to: $EMAIL_TO"
             fi
           done
+
+          # Send report to manager
+          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Daily GitHub Commit Report - $(date)\n\n$REPORT" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
+          echo "Manager report sent to: $MANAGER_EMAIL"
