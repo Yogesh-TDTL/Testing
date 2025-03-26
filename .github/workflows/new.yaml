@@ -1,119 +1,16 @@
-name: Notify Non-Committers via Mail
+name: Run Every Minute
+
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC) - Reminder Email
-    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC) - Warning Email & Report 
+    - cron: "*/1 * * * *"  # Runs every minute
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  check-commits:
-    runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MANAGER_USERNAME: "ImranTDTL"  # GitHub username of the manager to exclude
-      DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
-      MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
-    steps:
-      - name: Fetch Collaborators (Excluding Manager)
-        id: fetch_collaborators
-        run: |
-          echo "Fetching repository collaborators..."
-          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                              -H "Accept: application/vnd.github.v3+json" \
-                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-
-          # Remove the manager from the list
-          DEVELOPERS=$(echo "$COLLABORATORS" | grep -v -w "$MANAGER_USERNAME" || true)
-          echo "Final developer list (excluding manager): $DEVELOPERS"
-          echo "$DEVELOPERS" > developers.txt
-
-      - name: Fetch Commits Before 7 PM
-        id: check_commits
-        run: |
-          TODAY=$(date -u +"%Y-%m-%dT00:00:00Z")
-          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z")  # 7:30 PM IST in UTC
-
-          echo "Checking commits from $TODAY until $SEVEN_PM_UTC..."
-
-          HAS_COMMITTED="false"
-          while IFS= read -r DEV; do
-            COMMIT_COUNT=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                            "https://api.github.com/repos/${{ github.repository }}/commits?since=$TODAY&until=$SEVEN_PM_UTC&author=$DEV" \
-                            | jq 'length')
-
-            if [ "$COMMIT_COUNT" -gt 0 ]; then
-              echo "$DEV has committed today."
-              HAS_COMMITTED="true"
-            fi
-          done < developers.txt
-
-          echo "HAS_COMMITTED=$HAS_COMMITTED" >> $GITHUB_ENV
-
-  send-emails:
-    needs: check-commits
+  run-every-minute:
     runs-on: ubuntu-latest
     steps:
-      - name: Install and Configure msmtp
-        run: |
-          sudo apt-get update && sudo apt-get install -y msmtp
-          cat <<EOF > ~/.msmtprc
-          defaults
-          auth           login
-          tls            on
-          tls_trust_file /etc/ssl/certs/ca-certificates.crt
-          logfile        ~/.msmtp.log
-          account hostinger
-          host smtp.hostinger.com
-          port 465
-          user "${{ secrets.EMAIL_USERNAME }}"
-          password "${{ secrets.EMAIL_PASSWORD }}"
-          from "${{ secrets.EMAIL_USERNAME }}"
-          account default : hostinger
-          EOF
-          chmod 600 ~/.msmtprc
-
-      - name: Send 7 PM Reminder if No Commit
-        if: needs.check-commits.outputs.HAS_COMMITTED == 'false' && github.event.schedule == '30 13 * * 1-5'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello,\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$DEVELOPER_EMAIL"
-
-      - name: Fetch Developer Commits After 7 PM (For Next Day 9 AM Warning)
-        if: github.event.schedule == '30 3 * * 1-5'
-        id: check_commits_after_7pm
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SEVEN_PM_UTC=$(date -u +"%Y-%m-%dT13:30:00Z")
-          NOW_UTC=$(date -u +"%Y-%m-%dT03:30:00Z")  # 9:30 AM IST in UTC
-          
-          echo "Checking commits from $SEVEN_PM_UTC until $NOW_UTC..."
-
-          HAS_COMMITTED_AFTER_7PM="false"
-          while IFS= read -r DEV; do
-            COMMIT_COUNT=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                            "https://api.github.com/repos/${{ github.repository }}/commits?since=$SEVEN_PM_UTC&until=$NOW_UTC&author=$DEV" \
-                            | jq 'length')
-
-            if [ "$COMMIT_COUNT" -gt 0 ]; then
-              echo "$DEV has committed after 7 PM."
-              HAS_COMMITTED_AFTER_7PM="true"
-            fi
-          done < developers.txt
-
-          echo "HAS_COMMITTED_AFTER_7PM=$HAS_COMMITTED_AFTER_7PM" >> $GITHUB_ENV
-
-      - name: Send 9 AM Warning if No Commit
-        if: needs.send-emails.outputs.HAS_COMMITTED_AFTER_7PM == 'false' && github.event.schedule == '30 3 * * 1-5'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: 🚨 Urgent: No Commit Yesterday!\n\nHello,\n\nYou didn't commit yesterday, despite a reminder. Please take immediate action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$DEVELOPER_EMAIL"
-
-      - name: Send Summary Report to Manager
-        if: needs.send-emails.outputs.HAS_COMMITTED_AFTER_7PM == 'false' && github.event.schedule == '30 3 * * 1-5'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Daily Commit Report - Non-Committers\n\nHello Team,\n\nThe following developer did not commit anything yesterday:\n\nDeveloper: falguni.jadhav\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Run a Simple Command
+        run: echo "This workflow runs every minute!"
