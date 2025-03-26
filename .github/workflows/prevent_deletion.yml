@@ -1,62 +1,34 @@
-name: Test Notify Non-Committers via Mail
+name: Test Email Notification
+
 on:
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: "30 13 * * 1-5"  # 7:30 PM IST (13:30 UTC)
+    - cron: "30 3 * * 1-5"   # 9:30 AM IST (03:30 UTC)
 
 jobs:
-  check-commits:
+  send-test-emails:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MANAGER_USERNAME: "Yogesh-TDTL"
+      EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      SMTP_SERVER: "smtp.hostinger.com"
+      SMTP_PORT: "587"
       DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
       MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
-    outputs:
-      HAS_COMMITTED: ${{ env.HAS_COMMITTED }}
+
     steps:
-      - name: Fetch Collaborators (Excluding Manager)
-        id: fetch_collaborators
-        run: |
-          echo "Fetching repository collaborators..."
-          COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                              -H "Accept: application/vnd.github.v3+json" \
-                              "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login')
-
-          # Remove manager from list
-          DEVELOPERS=$(echo "$COLLABORATORS" | grep -v -w "$MANAGER_USERNAME" || true)
-          echo "Final developer list (excluding manager): $DEVELOPERS"
-          
-          echo "$DEVELOPERS" | tee developers.txt  # Debug to check if it's empty
-
-      - name: Debug Developer Email
+      - name: Debug Email Variables
         run: |
           echo "Developer Email: $DEVELOPER_EMAIL"
+          echo "Manager Email: $MANAGER_EMAIL"
 
-      - name: Fetch Commits in Last Hour (For Testing)
-        id: check_commits
-        run: |
-          ONE_HOUR_AGO=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%SZ")
-          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          if [[ -z "$DEVELOPER_EMAIL" || -z "$MANAGER_EMAIL" ]]; then
+            echo "Error: One or more email addresses are missing. Exiting."
+            exit 1
+          fi
 
-          echo "Checking commits from $ONE_HOUR_AGO to $NOW..."
-
-          HAS_COMMITTED="false"
-          while IFS= read -r DEV; do
-            COMMIT_COUNT=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                            "https://api.github.com/repos/${{ github.repository }}/commits?since=$ONE_HOUR_AGO&until=$NOW&author=$DEV" \
-                            | jq 'length')
-
-            if [ "$COMMIT_COUNT" -gt 0 ]; then
-              echo "$DEV has committed."
-              HAS_COMMITTED="true"
-            fi
-          done < developers.txt
-
-          echo "HAS_COMMITTED=$HAS_COMMITTED" >> $GITHUB_ENV
-
-  send-emails:
-    needs: check-commits
-    runs-on: ubuntu-latest
-    steps:
       - name: Install and Configure msmtp
         run: |
           sudo apt-get update && sudo apt-get install -y msmtp
@@ -67,45 +39,21 @@ jobs:
           tls_trust_file /etc/ssl/certs/ca-certificates.crt
           logfile        ~/.msmtp.log
           account hostinger
-          host smtp.hostinger.com
-          port 465
-          user "${{ secrets.EMAIL_USERNAME }}"
-          password "${{ secrets.EMAIL_PASSWORD }}"
-          from "${{ secrets.EMAIL_USERNAME }}"
+          host $SMTP_SERVER
+          port $SMTP_PORT
+          user $EMAIL_USERNAME
+          password $EMAIL_PASSWORD
+          from $EMAIL_USERNAME
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
 
-      - name: Debug Outputs
+      - name: Send Test Email to Developer
         run: |
-          echo "HAS_COMMITTED from check-commits: ${{ needs.check-commits.outputs.HAS_COMMITTED }}"
+          echo "Sending test email to Developer: $DEVELOPER_EMAIL"
+          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: 🛠 Test Email\n\nHello,\n\nThis is a test email to confirm email delivery.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=$SMTP_SERVER --port=$SMTP_PORT --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo $EMAIL_PASSWORD" "$DEVELOPER_EMAIL"
 
-      - name: Set Developer Email for Later Use
+      - name: Send Test Email to Manager
         run: |
-          echo "DEVELOPER_EMAIL=${{ env.DEVELOPER_EMAIL }}" >> $GITHUB_ENV
-
-      - name: Send Test Email if No Commit
-        if: needs.check-commits.outputs.HAS_COMMITTED == 'false'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-          DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"  # Add the developer's email here explicitly
-        run: |
-          if [[ -z "$DEVELOPER_EMAIL" ]]; then
-            echo "Error: DEVELOPER_EMAIL is empty. Exiting."
-            exit 1
-          fi
-
-          echo "Sending email to $DEVELOPER_EMAIL"
-          printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: ⚠️ Test Reminder - No Commit in Last Hour\n\nHello,\n\nThis is a test email. You haven't committed anything in the last hour.\n\nBest,\nCloud Team" | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$DEVELOPER_EMAIL"
-
-      - name: Print msmtp Logs (Debug)
-        run: |
-          cat ~/.msmtp.log || echo "No msmtp logs found."
-
-      - name: Send Test Summary Report to Manager
-        if: needs.check-commits.outputs.HAS_COMMITTED == 'false'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-        run: |
-          echo "Sending email to $MANAGER_EMAIL"
-          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Test Daily Commit Report - Non-Committers\n\nHello,\n\nThis is a test report. The following developer did not commit in the last hour:\n\nDeveloper: falguni.jadhav\n\nRegards,\nCloud Team" | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
+          echo "Sending test email to Manager: $MANAGER_EMAIL"
+          printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: 🛠 Test Email\n\nHello,\n\nThis is a test email to confirm email delivery.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=$SMTP_SERVER --port=$SMTP_PORT --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo $EMAIL_PASSWORD" "$MANAGER_EMAIL"
