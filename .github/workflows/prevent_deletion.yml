@@ -11,7 +11,7 @@ jobs:
       DEVELOPER_EMAIL: "yogesh.more@thedatatechlabs.com"
       MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
     outputs:
-      HAS_COMMITTED: ${{ steps.check_commits.outputs.HAS_COMMITTED }}
+      HAS_COMMITTED: ${{ env.HAS_COMMITTED }}
     steps:
       - name: Fetch Collaborators (Excluding Manager)
         id: fetch_collaborators
@@ -24,7 +24,12 @@ jobs:
           # Remove manager from list
           DEVELOPERS=$(echo "$COLLABORATORS" | grep -v -w "$MANAGER_USERNAME" || true)
           echo "Final developer list (excluding manager): $DEVELOPERS"
-          echo "$DEVELOPERS" > developers.txt
+          
+          echo "$DEVELOPERS" | tee developers.txt  # Debug to check if it's empty
+
+      - name: Debug Developer Email
+        run: |
+          echo "Developer Email: $DEVELOPER_EMAIL"
 
       - name: Fetch Commits in Last Hour (For Testing)
         id: check_commits
@@ -47,7 +52,6 @@ jobs:
           done < developers.txt
 
           echo "HAS_COMMITTED=$HAS_COMMITTED" >> $GITHUB_ENV
-          echo "::set-output name=HAS_COMMITTED::$HAS_COMMITTED"
 
   send-emails:
     needs: check-commits
@@ -81,6 +85,11 @@ jobs:
         env:
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
+          if [[ -z "$DEVELOPER_EMAIL" ]]; then
+            echo "Error: DEVELOPER_EMAIL is empty. Exiting."
+            exit 1
+          fi
+
           echo "Sending email to $DEVELOPER_EMAIL"
           printf "From: $EMAIL_USERNAME\nTo: $DEVELOPER_EMAIL\nSubject: ⚠️ Test Reminder - No Commit in Last Hour\n\nHello,\n\nThis is a test email. You haven't committed anything in the last hour.\n\nBest,\nCloud Team" | msmtp --debug --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$DEVELOPER_EMAIL"
 
