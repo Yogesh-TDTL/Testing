@@ -80,10 +80,12 @@ jobs:
         run: |
           echo "HAS_COMMITTED from check-commits: ${{ needs.check-commits.outputs.HAS_COMMITTED }}"
 
+      - name: Set Developer Email for Later Use
+        run: |
+          echo "DEVELOPER_EMAIL=${{ env.DEVELOPER_EMAIL }}" >> $GITHUB_ENV
+
       - name: Send Test Email if No Commit
         if: needs.check-commits.outputs.HAS_COMMITTED == 'false'
-        env:
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
         run: |
           if [[ -z "$DEVELOPER_EMAIL" ]]; then
             echo "Error: DEVELOPER_EMAIL is empty. Exiting."
