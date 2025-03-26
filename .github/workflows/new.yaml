@@ -73,7 +73,7 @@ jobs:
           
           echo "Sending Reminder Emails..."
           for user in $NON_COMMITTED_USERS; do
-            EMAIL_TO="$yogesh.more@thedatatechlabs.com"  # Replace this logic to fetch actual emails
+            EMAIL_TO="yogesh.more@thedatatechlabs.com"
             printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: ⚠️ Reminder - No Commit Today!\n\nHello ${user},\n\nYou haven't committed anything today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
             echo "Email sent to: $EMAIL_TO"
           done
