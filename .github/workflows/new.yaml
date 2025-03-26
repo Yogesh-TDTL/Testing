@@ -37,8 +37,6 @@ jobs:
           MANAGER_USERNAME: "Yogesh-TDTL"  # Replace with actual manager's GitHub username
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
         run: |
-          export LANG=en_US.UTF-8
-          export LC_ALL=en_US.UTF-8
           
           echo "Fetching Collaborators..."
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
@@ -73,7 +71,8 @@ jobs:
           
           echo "\nNon-Committers (Last Hour):"
           echo -e "$NON_COMMITTED_USERS"
-          
+          export LANG=en_US.UTF-8
+          export LC_ALL=en_US.UTF-8          
           echo "Sending Reminder Emails..."
           echo "$NON_COMMITTED_USERS" | while IFS= read -r user; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
