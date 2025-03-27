@@ -1,10 +1,10 @@
-name: Check Recent Commits
+name: Check Recent Committers and Notify Non-Committers
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: "30 13 * * 1-5"  # Runs at 7 PM IST (1:30 PM UTC) Monday to Friday
     - cron: "30 3 * * 1-5"  # Runs at 9 AM IST (3:30 AM UTC) Monday to Friday
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   check-recent-committers:
@@ -13,31 +13,69 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       
-      - name: Check Recent Commit Activity
+      - name: Install and Configure msmtp
+        run: |
+          sudo apt-get update && sudo apt-get install -y msmtp
+          cat <<EOF > ~/.msmtprc
+          defaults
+          auth           login
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        ~/.msmtp.log
+          account hostinger
+          host smtp.hostinger.com
+          port 587
+          user "${{ secrets.EMAIL_USERNAME }}"
+          password "${{ secrets.EMAIL_PASSWORD }}"
+          from "${{ secrets.EMAIL_USERNAME }}"
+          account default : hostinger
+          EOF
+          chmod 600 ~/.msmtprc
+      
+      - name: Check Recent Commit Activity and Notify
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NON_COMMITTED_USER: "Yogesh-TDTL"
+          MANAGER_USERNAME: "ImranTDTL"
+          EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
+          MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
         run: |
-          # Get current and past timestamps
-          CURRENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          SINCE_TIME=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
+          # Define user to check (hardcoded)
+          NON_COMMITTED_USER="Yogesh-TDTL"
+          EMAIL_TO="yogesh.more@thedatatechlabs.com"
+
+          echo "Checking commits for: $NON_COMMITTED_USER"
           
-          # Fetch commits
-          API_URL="https://api.github.com/repos/${{ github.repository }}/commits?author=$NON_COMMITTED_USER&since=$SINCE_TIME"
-          echo "Checking commits from: $SINCE_TIME to $CURRENT_TIME"
-          echo "API URL: $API_URL"
-          RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
+          # Check commits in the last 24 hours
+          RECENT_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/commits?author=$NON_COMMITTED_USER&since=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")" \
+               | jq length)
           
-          # Debug API response
-          echo "API Response: $RESPONSE"
-          
-          # Count commits
-          COMMIT_COUNT=$(echo "$RESPONSE" | jq length)
-          
-          echo "Number of commits found: $COMMIT_COUNT"
-          
-          if [ "$COMMIT_COUNT" -eq 0 ]; then
-            echo "No commits found in the last 24 hours."
+          if [ "$RECENT_COMMITS" -eq 0 ]; then
+            echo "No commits found in the last 24 hours. Sending reminder email..."
+            printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello ${NON_COMMITTED_USER},\n\nThis is a reminder that no commit has been recorded from your end in the repository today. Please push your updates before the end of the day.\n\nIf there's any issue preventing you from committing, let me know immediately.\n\nLooking forward to your update.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+            echo "Reminder email sent to: $EMAIL_TO"
           else
-            echo "Developer has committed within the last 24 hours."
+            echo "User has already committed in the last 24 hours. No reminder needed."
+          fi
+          
+          # If running at 9 AM IST, check again before sending warning
+          if [ "${{ github.event.schedule }}" = "30 3 * * 1-5" ]; then
+            echo "Checking Final Commit Status Before Warning..."
+            FINAL_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                 -H "Accept: application/vnd.github.v3+json" \
+                 "https://api.github.com/repos/${{ github.repository }}/commits?author=$NON_COMMITTED_USER&since=$(date -u -d '14 hours ago' +"%Y-%m-%dT%H:%M:%SZ")" \
+                 | jq length)
+            
+            if [ "$FINAL_COMMITS" -eq 0 ]; then
+              echo "No commits found even after the reminder. Sending warning email..."
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: WARNING - No Commit Detected!\n\nHello ${NON_COMMITTED_USER},\n\nYou have not committed any updates. This is unacceptable and goes against our workflow expectations.\n\nImmediate action is required. Let me know if there is any issue preventing you from completing your work.\n\nFailure to comply may lead to further action.\n\nRegards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+              echo "Warning email sent to: $EMAIL_TO"
+
+              echo "Sending Report to Manager..."
+              printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Daily Commit Report - Non-Committers\n\nHello Team,\n\nDespite the reminder sent yesterday, the following user has not committed any updates:\n\n$NON_COMMITTED_USER\n\nThis is a breach of our workflow requirements. Please advise on the next steps.\n\nBest Regards,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$MANAGER_EMAIL"
+              echo "Report sent to manager: $MANAGER_EMAIL"
+            else
+              echo "User committed after the reminder. No warning or report needed."
+            fi
           fi
