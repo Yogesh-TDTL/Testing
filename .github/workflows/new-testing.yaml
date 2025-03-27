@@ -45,7 +45,7 @@ jobs:
       - name: Check Recent Commit Activity and Notify
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANAGER_USERNAME: "Yogesh-TDTL"
+          MANAGER_USERNAME: "Pratham-TDTL"
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
           MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
         run: |
