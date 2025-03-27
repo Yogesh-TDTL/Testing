@@ -19,7 +19,7 @@ jobs:
         run: |
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | grep -v "TDTL-Internal-Applications")
+          "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | grep -v -E "TDTL-Internal-Applications|Yogesh-TDTL")
           echo "Filtered Collaborators: $COLLABORATORS"
           echo "COLLABORATORS=$(echo $COLLABORATORS | tr '\n' ' ')" >> $GITHUB_ENV
       
