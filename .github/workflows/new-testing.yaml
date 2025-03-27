@@ -19,7 +19,7 @@ jobs:
         run: |
           COLLABORATORS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | grep -v -E "TDTL-Internal-Applications|Pratham-TDTL")
+          "https://api.github.com/repos/${{ github.repository }}/collaborators" | jq -r '.[].login' | grep -v -E "TDTL-Internal-Applications|ImranTDTL|Nikhil-Tdtl")
           echo "Filtered Collaborators: $COLLABORATORS"
           echo "COLLABORATORS=$(echo $COLLABORATORS | tr '\n' ' ')" >> $GITHUB_ENV
       
@@ -45,25 +45,33 @@ jobs:
       - name: Check Recent Commit Activity and Notify
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MANAGER_USERNAME: "Pratham-TDTL"
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
-          MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
+          MANAGER_EMAIL: "nikhil.pawar@tdtl.world"
         run: |
+          CURRENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          SINCE_TIME=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
+          
           for USER in $COLLABORATORS; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
             echo "Checking commits for: $USER"
             
-            RECENT_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                 -H "Accept: application/vnd.github.v3+json" \
-                 "https://api.github.com/repos/${{ github.repository }}/commits?author=$USER&since=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")" \
-                 | jq length)
+            API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=main&author=$USER&since=$SINCE_TIME"
+            RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
             
-            if [ "$RECENT_COMMITS" -eq 0 ]; then
-              echo "No commits found for $USER. Sending reminder email..."
-              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello $USER,\n\nThis is a reminder that no commit has been recorded from your end in the repository today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
-              echo "Reminder email sent to: $EMAIL_TO"
+            if echo "$RESPONSE" | jq empty 2>/dev/null; then
+              COMMIT_COUNT=$(echo "$RESPONSE" | jq length)
+              echo "Number of commits found for $USER: $COMMIT_COUNT"
+              if [ "$COMMIT_COUNT" -eq 0 ]; then
+                echo "No commits found for $USER. Sending reminder email..."
+                printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello $USER,\n\nThis is a reminder that no commit has been recorded from your end in the repository today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp --from=$EMAIL_USERNAME --host=smtp.hostinger.com --port=587 --auth=on --tls=on --user=$EMAIL_USERNAME --passwordeval "echo ${{ secrets.EMAIL_PASSWORD }}" "$EMAIL_TO"
+                echo "Reminder email sent to: $EMAIL_TO"
+              else
+                echo "$USER has committed within the last 24 hours. No reminder needed."
+              fi
             else
-              echo "$USER has committed within the last 24 hours. No reminder needed."
+              echo "Error: Invalid API response for $USER"
+              echo "Response: $RESPONSE"
+              exit 1
             fi
           done
           
@@ -72,7 +80,7 @@ jobs:
               EMAIL_TO="yogesh.more@thedatatechlabs.com"
               FINAL_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                    -H "Accept: application/vnd.github.v3+json" \
-                   "https://api.github.com/repos/${{ github.repository }}/commits?author=$USER&since=$(date -u -d '14 hours ago' +"%Y-%m-%dT%H:%M:%SZ")" \
+                   "https://api.github.com/repos/${{ github.repository }}/commits?sha=main&author=$USER&since=$SINCE_TIME" \
                    | jq length)
               
               if [ "$FINAL_COMMITS" -eq 0 ]; then
