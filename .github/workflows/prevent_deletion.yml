@@ -49,13 +49,13 @@ jobs:
           
           for USER in $COLLABORATORS; do
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
-            API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=main&author=$USER&since=$SINCE_TIME"
+            API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=frontend&author=$USER&since=$SINCE_TIME"
             RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
             COMMIT_COUNT=$(echo "$RESPONSE" | jq length)
             
             if [ "$COMMIT_COUNT" -gt 0 ]; then
               echo "$USER has committed. Sending success email..."
-              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Success - Commit Recorded!\n\nHello $USER,\n\nGreat job! Your commit has been successfully recorded in the repository today. Keep up the good work!\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Success - Commit Recorded!\n\nHello $USER,\n\nGreat job! Your commit has been successfully recorded in the repository today. Keep up the good work!\n\nMake sure to continue this streak and push your updates tomorrow as well. Consistency is key!\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
               echo "Success email sent to: $EMAIL_TO"
             else
               echo "$USER has not committed. Sending reminder email..."
