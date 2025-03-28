@@ -1,18 +1,17 @@
-name: Check Recent Committers and Notify Non-Committers
+name: Check Daily Commits and Notify Developers
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"  # Runs at 7 PM IST (1:30 PM UTC) Monday to Friday
-    - cron: "30 3 * * 1-5"  # Runs at 9 AM IST (3:30 AM UTC) Monday to Friday
+    - cron: "30 14 * * 1-5"  # Runs at 8 PM IST (2:30 PM UTC) Monday to Friday
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  check-recent-committers:
+  check-daily-commits:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
+      
       - name: Fetch Collaborators
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,69 +39,27 @@ jobs:
           account default : hostinger
           EOF
           chmod 600 ~/.msmtprc
-
-      - name: Check Recent Commit Activity and Notify
+      
+      - name: Check Daily Commit Activity and Notify
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EMAIL_USERNAME: "${{ secrets.EMAIL_USERNAME }}"
-          MANAGER_EMAIL: "yogesh.more@thedatatechlabs.com"
         run: |
-          CURRENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          SINCE_7PM_TIME=$(date -u -d 'yesterday 19:00:00' +"%Y-%m-%dT%H:%M:%SZ")
-          SINCE_24H_TIME=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
+          SINCE_TIME=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ")
           
-          NON_COMMITTERS=()
-          REMINDED_USERS=()
-          COMMITTERS=()
-
           for USER in $COLLABORATORS; do
-            echo "Checking commits for: $USER"
             EMAIL_TO="yogesh.more@thedatatechlabs.com"
-
-            API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=main&author=$USER&since=$SINCE_24H_TIME"
+            API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=frontend&author=$USER&since=$SINCE_TIME"
             RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
-
-            if echo "$RESPONSE" | jq empty 2>/dev/null; then
-              COMMIT_COUNT=$(echo "$RESPONSE" | jq length)
-              
-              if [ "$COMMIT_COUNT" -eq 0 ]; then
-                NON_COMMITTERS+=("$USER")
-
-                if [ "${{ github.event.schedule }}" = "30 13 * * 1-5" ]; then
-                  echo "Sending reminder email to $USER..."
-                  printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello $USER,\n\nYou have not committed to the repository today. Please push your updates before the end of the day.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
-                  REMINDED_USERS+=("$USER")
-                fi
-              else
-                COMMITTERS+=("$USER")
-              fi
+            COMMIT_COUNT=$(echo "$RESPONSE" | jq length)
+            
+            if [ "$COMMIT_COUNT" -gt 0 ]; then
+              echo "$USER has committed. Sending success email..."
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Success - Commit Recorded!\n\nHello $USER,\n\nGreat job! Your commit has been successfully recorded in the repository today. Keep up the good work!\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
+              echo "Success email sent to: $EMAIL_TO"
             else
-              echo "Error: Invalid API response for $USER"
-              exit 1
+              echo "$USER has not committed. Sending reminder email..."
+              printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: Reminder - No Commit Today!\n\nHello $USER,\n\nThis is a reminder that no commit has been recorded from your end today. Please ensure your updates are pushed before the end of the day.\n\nBest,\nCloud Team" | msmtp "$EMAIL_TO"
+              echo "Reminder email sent to: $EMAIL_TO"
             fi
           done
-
-          if [ "${{ github.event.schedule }}" = "30 3 * * 1-5" ]; then
-            FINAL_NON_COMMITTERS=()
-            for USER in "${REMINDED_USERS[@]}"; do
-              echo "Rechecking commits for: $USER"
-              
-              API_URL="https://api.github.com/repos/${{ github.repository }}/commits?sha=main&author=$USER&since=$SINCE_7PM_TIME"
-              FINAL_COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                   -H "Accept: application/vnd.github.v3+json" "$API_URL" | jq length)
-
-              if [ "$FINAL_COMMITS" -eq 0 ]; then
-                echo "$USER still has not committed. Sending warning email..."
-                EMAIL_TO="yogesh.more@thedatatechlabs.com"
-
-                printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: WARNING - No Commit Detected!\n\nHello $USER,\n\nYou have not committed any updates. Immediate action is required.\n\nRegards,\nCloud Team" | msmtp "$EMAIL_TO"
-                FINAL_NON_COMMITTERS+=("$USER")
-              else
-                echo "$USER committed after 7 PM. No email will be sent."
-                COMMITTERS+=("$USER")
-              fi
-            done
-
-            echo "Sending Daily Report to Manager..."
-            printf "From: $EMAIL_USERNAME\nTo: $MANAGER_EMAIL\nSubject: Daily Commit Report\n\nHello Team,\n\nCommit Report for Today:\n\n✅ Committers:\n${COMMITTERS[*]}\n\n❌ Non-Committers:\n${FINAL_NON_COMMITTERS[*]}\n\nBest Regards,\nCloud Team" | msmtp "$MANAGER_EMAIL"
-          fi
