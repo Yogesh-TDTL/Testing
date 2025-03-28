@@ -98,6 +98,7 @@ jobs:
                 printf "From: $EMAIL_USERNAME\nTo: $EMAIL_TO\nSubject: WARNING - No Commit Detected!\n\nHello $USER,\n\nYou have not committed any updates. Immediate action is required.\n\nRegards,\nCloud Team" | msmtp "$EMAIL_TO"
                 FINAL_NON_COMMITTERS+=("$USER")
               else
+                echo "$USER committed after 7 PM. No email will be sent."
                 COMMITTERS+=("$USER")
               fi
             done
